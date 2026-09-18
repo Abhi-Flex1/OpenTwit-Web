@@ -1,0 +1,137 @@
+{
+  "HVIGOR_OHOS_PLUGIN": {
+    "MODULES": [
+      {
+        "MODULE_NAME": "923fe53966c6cd9343e11af776cd4b05be315ea4b200b02e4d5dfb0f929b73bf",
+        "API_TYPE": "stageMode",
+        "INCLUDE_IN_BUILD": true,
+        "IS_COMMAND_LINE_ENTRY_MODULE": false,
+        "BUILD_OPTION": [
+          {
+            "path": "debuggable",
+            "traceValue": true,
+            "value": true
+          },
+          {
+            "path": "copyFrom",
+            "traceValue": false,
+            "value": ""
+          }
+        ],
+        "PACKAGE_JSON": [],
+        "MODULE_TYPE": "entry",
+        "INCREMENTAL_TASKS": {
+          "COMPILE_ARKTS": true
+        },
+        "IS_INCREMENTAL_MODULE": true
+      }
+    ],
+    "NATIVE_COMPILER": "Default",
+    "IS_FULL_BUILD": false,
+    "PACKAGE_JSON": [],
+    "BUILD_MODE": "debug"
+  },
+  "HVIGOR": {
+    "IS_INCREMENTAL": true,
+    "IS_DAEMON": false,
+    "IS_PARALLEL": true,
+    "IS_HVIGORFILE_TYPE_CHECK": false,
+    "IS_EXECUTION_OHPM_BY_HVIGOR": false,
+    "BUILD_ANALYSIS_MODE": "normal",
+    "TASK_TIME": {
+      "923fe53966c6cd9343e11af776cd4b05be315ea4b200b02e4d5dfb0f929b73bf": {
+        "CreateModuleInfo": 369958,
+        "ConfigureCmake": 80084,
+        "PreCheckSyscap": 175209,
+        "GeneratePkgContextInfo": 3121375,
+        "ProcessIntegratedHsp": 214750,
+        "BuildNativeWithCmake": 112083,
+        "ProcessStartupConfig": 447292,
+        "BuildNativeWithNinja": 151250,
+        "BuildJS": 673875,
+        "CompileArkTS": 2473750208,
+        "ProcessCompiledResources": 145709,
+        "PackageHap": 255725000,
+        "PackingCheck": 2449333
+      }
+    },
+    "CUSTOM_TASK_TIME": {},
+    "CUSTOM_PLUGIN_TIME": {},
+    "APIS": [
+      "getProperty"
+    ],
+    "CONFIG_EXPERIMENT": {
+      "ENABLE_MODULE_SKIP": false,
+      "ENABLE_CPP_FUNCTION_LEVEL_INCREMENTAL": false
+    },
+    "CONFIG_PROPERTIES": {},
+    "BUILD_ID": "202609182021250460",
+    "ERROR_MESSAGE": [
+      {
+        "CODE": "00303116",
+        "MESSAGE": "The length of the storePassword or keyPassword field in the signature configuration is less than 32. At file: %s",
+        "SOLUTIONS": [
+          "Re-execute sign your app/atomic service automatically：clear the signingConfigs field in the /Users/abhi/Desktop/HarmonyOS Ports/OpenTwit-Web/build-profile.json5 file and go to Project Structure > Project > Signing Configs and apply the signature material",
+          "Verify if signingConfigs is overridden in the project-level and module-level hvigorfile.ts. If so, use the error message to ensure the configuration is correct."
+        ],
+        "TIMESTAMP": "1789755688558"
+      },
+      {
+        "CODE": "00303116",
+        "STACK": "00303116 Configuration Error\n...",
+        "PROJECT_CONFIG": {
+          "buildMode": "Debug",
+          "compileMode": "esmodule",
+          "moduleType": "entry",
+          "targetName": ".default",
+          "packageManagerType": "ohpm",
+          "isLocalTest": false,
+          "needCoverageInsert": false,
+          "debugLine": false,
+          "compileSdkVersion": 24,
+          "compatibleSdkVersion": 24,
+          "originCompatibleSdkVersion": 24,
+          "etsLoaderVersion": "6.1.1.125",
+          "etsLoaderReleaseType": "Release",
+          "aotCompileMode": "type",
+          "isCrossplatform": false,
+          "bundleType": "app",
+          "apiVersion": 24,
+          "isFaMode": false,
+          "deviceTypes": [
+            "default",
+            "tablet"
+          ],
+          "integratedHsp": false,
+          "branchElimination": false,
+          "tsImportSendable": false,
+          "resolveConflictMode": true,
+          "useNativeResolver": true,
+          "shouldEmitJs": true,
+          "useTscResolve": false,
+          "singleFileEmit": false,
+          "executionMode": "memory",
+          "isHarDeduplicateEnabled": false,
+          "autoLazyImport": false,
+          "allowEmptyBundleName": false,
+          "reExportCheckMode": "noCheck",
+          "usePathPlaceholder": false,
+          "writeRollupCache": true,
+          "isExpandImportEnabled": false,
+          "ignoreCrossplatformCheck": false,
+          "skipOhModulesLint": false,
+          "enableStrictCheckOHModule": false,
+          "useDeclarationFileSignature": false,
+          "isPreloadSoEnabled": false,
+          "runtimeOS": "OpenHarmony",
+          "sdkInfo": "true:24:6.1.1.125:Release",
+          "useSourceHash": false,
+          "isByteCodeHarOptimize": false,
+          "copyCodeResourceEnable": true,
+          "uiTransformOptimization": false
+        }
+      }
+    ],
+    "TOTAL_TIME": 3521790542
+  }
+}

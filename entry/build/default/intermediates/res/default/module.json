@@ -1,0 +1,60 @@
+{
+	"app":	{
+		"bundleName":	"com.example.opentwit",
+		"vendor":	"example",
+		"versionCode":	1,
+		"versionName":	"1.0.0",
+		"minAPIVersion":	24,
+		"icon":	"$media:app_icon",
+		"label":	"$string:app_name",
+		"apiReleaseType":	"Release",
+		"compileSdkVersion":	"6.1.1.125",
+		"targetAPIVersion":	24,
+		"compileSdkType":	"OpenHarmony",
+		"targetMinorAPIVersion":	0,
+		"targetPatchAPIVersion":	0,
+		"appEnvironments":	[],
+		"bundleType":	"app",
+		"buildMode":	"debug",
+		"debug":	true,
+		"iconId":	16777221,
+		"labelId":	16777216
+	},
+	"module":	{
+		"name":	"entry",
+		"type":	"entry",
+		"description":	"OpenTwit entry module",
+		"mainElement":	"EntryAbility",
+		"deviceTypes":	["default", "tablet"],
+		"deliveryWithInstall":	true,
+		"installationFree":	false,
+		"pages":	"$profile:main_pages",
+		"abilities":	[{
+				"name":	"EntryAbility",
+				"srcEntry":	"./ets/entryability/EntryAbility.ets",
+				"description":	"OpenTwit entry ability",
+				"icon":	"$media:app_icon",
+				"label":	"$string:app_name",
+				"startWindowIcon":	"$media:app_icon",
+				"startWindowBackground":	"$color:hw_bg_light",
+				"exported":	true,
+				"skills":	[{
+						"entities":	["entity.system.home"],
+						"actions":	["action.system.home"]
+					}],
+				"iconId":	16777221,
+				"labelId":	16777216,
+				"startWindowIconId":	16777221,
+				"startWindowBackgroundId":	16777227
+			}],
+		"requestPermissions":	[{
+				"name":	"ohos.permission.INTERNET",
+				"reason":	"$string:internet_reason",
+				"reasonId":	16777224
+			}],
+		"packageName":	"entry",
+		"virtualMachine":	"ark24.0.0.0",
+		"compileMode":	"esmodule",
+		"dependencies":	[]
+	}
+}

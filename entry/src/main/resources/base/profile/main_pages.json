@@ -1,0 +1,6 @@
+{
+  "src": [
+    "pages/MainTabs",
+    "pages/Login"
+  ]
+}
