@@ -50,6 +50,16 @@ export class Profile extends ViewPU {
     aboutToAppear(): void {
         this.loadHandle();
     }
+    private static initialOf(handle: string): string {
+        if (handle === '') {
+            return '';
+        }
+        let name: string = handle.startsWith('@') ? handle.substring(1) : handle;
+        if (name === '') {
+            return '';
+        }
+        return name.charAt(0).toUpperCase();
+    }
     initialRender() {
         this.observeComponentCreation2((elmtId, isInitialRender) => {
             Navigation.create(new NavPathStack(), { moduleName: "entry", pagePath: "entry/src/main/ets/pages/Profile", isUserCreateStack: false });
@@ -84,12 +94,15 @@ export class Profile extends ViewPU {
             Stack.create({ alignContent: Alignment.Center });
         }, Stack);
         this.observeComponentCreation2((elmtId, isInitialRender) => {
-            Circle.create({ width: 72, height: 72 });
-            Circle.fill({ "id": 16777229, "type": 10001, params: [], "bundleName": "com.example.opentwit", "moduleName": "entry" });
-            Circle.border({ width: 3, color: Color.White });
+            Circle.create({ width: 80, height: 80 });
+            Circle.fill(Color.White);
         }, Circle);
         this.observeComponentCreation2((elmtId, isInitialRender) => {
-            Text.create(this.handle.length > 1 ? this.handle.charAt(1).toUpperCase() : '');
+            Circle.create({ width: 72, height: 72 });
+            Circle.fill({ "id": 16777229, "type": 10001, params: [], "bundleName": "com.example.opentwit", "moduleName": "entry" });
+        }, Circle);
+        this.observeComponentCreation2((elmtId, isInitialRender) => {
+            Text.create(Profile.initialOf(this.handle));
             Text.fontSize(28);
             Text.fontColor(Color.White);
             Text.fontFamily(FONT_FAMILY);
