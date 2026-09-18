@@ -9,6 +9,8 @@ export class TweetData {
   likes: number;
   reposts: number;
   replies: number;
+  avatarUrl: string = '';
+  tweetId: string = '';
 
   constructor(userName: string, handle: string, time: string, content: string, likes: number, reposts: number) {
     this.userName = userName;
@@ -176,7 +178,7 @@ export class WebTimeline {
     return tweets;
   }
 
-  private static async fetchStatus(handle: string, id: string): Promise<TweetData | undefined> {
+  public static async fetchStatus(handle: string, id: string): Promise<TweetData | undefined> {
     let fx: ESObject | undefined = await WebTimeline.getJson('https://api.fxtwitter.com/' + handle + '/status/' + id);
     if (fx) {
       let mapped: TweetData | undefined = WebTimeline.mapStatus(fx, handle);
@@ -205,6 +207,8 @@ export class WebTimeline {
       let text: string = tw['text'] as string;
       let name: string = handle;
       let screen: string = '@' + handle;
+      let avatarUrl: string = '';
+      let tweetId: string = '';
       if (tw['author']) {
         let ar: Record<string, ESObject> = (tw['author'] as Record<string, ESObject>);
         if (ar['name']) {
@@ -212,6 +216,9 @@ export class WebTimeline {
         }
         if (ar['screen_name']) {
           screen = '@' + (ar['screen_name'] as string);
+        }
+        if (ar['avatar_url']) {
+          avatarUrl = ar['avatar_url'] as string;
         }
       }
       let likes: number = 0;
@@ -230,8 +237,15 @@ export class WebTimeline {
       if (tw['created_at']) {
         time = WebTimeline.shortDate(tw['created_at'] as string);
       }
+      if (tw['id_str']) {
+        tweetId = tw['id_str'] as string;
+      } else if (tw['id']) {
+        tweetId = String(tw['id']);
+      }
       let tweet: TweetData = new TweetData(name, screen, time, text, likes, reposts);
       tweet.replies = replies;
+      tweet.avatarUrl = avatarUrl;
+      tweet.tweetId = tweetId;
       return tweet;
     } catch (err) {
       return undefined;
@@ -359,9 +373,16 @@ export class WebTimeline {
         } else {
           continue;
         }
-        let id: string = record['id_str'] ? (record['id_str'] as string) : (record['id'] ? String(record['id']) : handle + text.length);
-        tweets.push(new TweetData(handle, handle, 'now', text, 0, 0));
-        void id;
+        let tweetId: string = '';
+        if (record['id_str']) {
+          tweetId = record['id_str'] as string;
+        } else if (record['id']) {
+          tweetId = String(record['id']);
+        }
+        let tweet: TweetData = new TweetData(handle, handle, 'now', text, 0, 0);
+        tweet.avatarUrl = '';
+        tweet.tweetId = tweetId;
+        tweets.push(tweet);
       }
     } catch (err) {
       return [];

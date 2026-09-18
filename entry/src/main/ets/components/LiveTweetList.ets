@@ -9,6 +9,8 @@ export interface LiveTweetItem {
   replies: number;
   reposts: number;
   likes: number;
+  avatarUrl?: string;
+  tweetId?: string;
 }
 
 @Component
@@ -58,7 +60,9 @@ export struct LiveTweetList {
               content: item.content,
               replies: item.replies,
               reposts: item.reposts,
-              likes: item.likes
+              likes: item.likes,
+              avatarUrl: item.avatarUrl,
+              tweetId: item.tweetId
             });
           }
         }, (item: LiveTweetItem) => item.handle + item.time + item.content);

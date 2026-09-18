@@ -9,7 +9,10 @@ interface TweetCard_Params {
     replies?: number;
     reposts?: number;
     likes?: number;
+    avatarUrl?: string;
+    tweetId?: string;
 }
+import router from "@ohos:router";
 import { FONT_FAMILY } from "@bundle:com.example.opentwit/entry/ets/common/Theme";
 export class TweetCard extends ViewPU {
     constructor(parent, params, __localStorage, elmtId = -1, paramsLambda = undefined, extraInfo) {
@@ -24,12 +27,20 @@ export class TweetCard extends ViewPU {
         this.__replies = new SynchedPropertySimpleOneWayPU(params.replies, this, "replies");
         this.__reposts = new SynchedPropertySimpleOneWayPU(params.reposts, this, "reposts");
         this.__likes = new SynchedPropertySimpleOneWayPU(params.likes, this, "likes");
+        this.__avatarUrl = new SynchedPropertySimpleOneWayPU(params.avatarUrl, this, "avatarUrl");
+        this.__tweetId = new SynchedPropertySimpleOneWayPU(params.tweetId, this, "tweetId");
         this.setInitiallyProvidedValue(params);
         this.finalizeConstruction();
     }
     setInitiallyProvidedValue(params: TweetCard_Params) {
         if (params.replies === undefined) {
             this.__replies.set(0);
+        }
+        if (params.avatarUrl === undefined) {
+            this.__avatarUrl.set('');
+        }
+        if (params.tweetId === undefined) {
+            this.__tweetId.set('');
         }
     }
     updateStateVars(params: TweetCard_Params) {
@@ -40,6 +51,8 @@ export class TweetCard extends ViewPU {
         this.__replies.reset(params.replies);
         this.__reposts.reset(params.reposts);
         this.__likes.reset(params.likes);
+        this.__avatarUrl.reset(params.avatarUrl);
+        this.__tweetId.reset(params.tweetId);
     }
     purgeVariableDependenciesOnElmtId(rmElmtId) {
         this.__userName.purgeDependencyOnElmtId(rmElmtId);
@@ -49,6 +62,8 @@ export class TweetCard extends ViewPU {
         this.__replies.purgeDependencyOnElmtId(rmElmtId);
         this.__reposts.purgeDependencyOnElmtId(rmElmtId);
         this.__likes.purgeDependencyOnElmtId(rmElmtId);
+        this.__avatarUrl.purgeDependencyOnElmtId(rmElmtId);
+        this.__tweetId.purgeDependencyOnElmtId(rmElmtId);
     }
     aboutToBeDeleted() {
         this.__userName.aboutToBeDeleted();
@@ -58,6 +73,8 @@ export class TweetCard extends ViewPU {
         this.__replies.aboutToBeDeleted();
         this.__reposts.aboutToBeDeleted();
         this.__likes.aboutToBeDeleted();
+        this.__avatarUrl.aboutToBeDeleted();
+        this.__tweetId.aboutToBeDeleted();
         SubscriberManager.Get().delete(this.id__());
         this.aboutToBeDeletedInternal();
     }
@@ -110,6 +127,20 @@ export class TweetCard extends ViewPU {
     set likes(newValue: number) {
         this.__likes.set(newValue);
     }
+    private __avatarUrl: SynchedPropertySimpleOneWayPU<string>;
+    get avatarUrl() {
+        return this.__avatarUrl.get();
+    }
+    set avatarUrl(newValue: string) {
+        this.__avatarUrl.set(newValue);
+    }
+    private __tweetId: SynchedPropertySimpleOneWayPU<string>;
+    get tweetId() {
+        return this.__tweetId.get();
+    }
+    set tweetId(newValue: string) {
+        this.__tweetId.set(newValue);
+    }
     initialRender() {
         this.observeComponentCreation2((elmtId, isInitialRender) => {
             Column.create();
@@ -124,24 +155,51 @@ export class TweetCard extends ViewPU {
             Row.alignItems(VerticalAlign.Top);
         }, Row);
         this.observeComponentCreation2((elmtId, isInitialRender) => {
-            Stack.create({ alignContent: Alignment.Center });
-        }, Stack);
-        this.observeComponentCreation2((elmtId, isInitialRender) => {
-            Circle.create({ width: 44, height: 44 });
-            Circle.fill({ "id": 16777229, "type": 10001, params: [], "bundleName": "com.example.opentwit", "moduleName": "entry" });
-        }, Circle);
-        this.observeComponentCreation2((elmtId, isInitialRender) => {
-            Text.create(this.userName.charAt(0));
-            Text.fontSize(20);
-            Text.fontColor(Color.White);
-            Text.fontFamily(FONT_FAMILY);
-        }, Text);
-        Text.pop();
-        Stack.pop();
+            If.create();
+            if (this.avatarUrl !== '') {
+                this.ifElseBranchUpdateFunction(0, () => {
+                    this.observeComponentCreation2((elmtId, isInitialRender) => {
+                        Image.create(this.avatarUrl);
+                        Image.width(44);
+                        Image.height(44);
+                        Image.borderRadius(22);
+                        Image.onClick(() => {
+                            router.pushUrl({ url: 'pages/UserProfile', params: { handle: this.handle } });
+                        });
+                    }, Image);
+                });
+            }
+            else {
+                this.ifElseBranchUpdateFunction(1, () => {
+                    this.observeComponentCreation2((elmtId, isInitialRender) => {
+                        Stack.create({ alignContent: Alignment.Center });
+                        Stack.onClick(() => {
+                            router.pushUrl({ url: 'pages/UserProfile', params: { handle: this.handle } });
+                        });
+                    }, Stack);
+                    this.observeComponentCreation2((elmtId, isInitialRender) => {
+                        Circle.create({ width: 44, height: 44 });
+                        Circle.fill({ "id": 16777229, "type": 10001, params: [], "bundleName": "com.example.opentwit", "moduleName": "entry" });
+                    }, Circle);
+                    this.observeComponentCreation2((elmtId, isInitialRender) => {
+                        Text.create(this.userName.charAt(0));
+                        Text.fontSize(20);
+                        Text.fontColor(Color.White);
+                        Text.fontFamily(FONT_FAMILY);
+                    }, Text);
+                    Text.pop();
+                    Stack.pop();
+                });
+            }
+        }, If);
+        If.pop();
         this.observeComponentCreation2((elmtId, isInitialRender) => {
             Column.create({ space: 6 });
             Column.layoutWeight(1);
             Column.alignItems(HorizontalAlign.Start);
+            Column.onClick(() => {
+                router.pushUrl({ url: 'pages/Detail', params: { handle: this.handle, tweetId: this.tweetId } });
+            });
         }, Column);
         this.observeComponentCreation2((elmtId, isInitialRender) => {
             Row.create({ space: 6 });

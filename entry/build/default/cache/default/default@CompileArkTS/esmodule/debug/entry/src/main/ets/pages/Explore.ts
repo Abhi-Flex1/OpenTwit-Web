@@ -6,8 +6,12 @@ interface Explore_Params {
     selectedTab?: number;
     tweets?: TweetData[];
     handle?: string;
+    foundUser?: FoundUser | undefined;
 }
+import router from "@ohos:router";
 import { WebTimeline } from "@bundle:com.example.opentwit/entry/ets/services/WebTimeline";
+import { HandleLookup } from "@bundle:com.example.opentwit/entry/ets/services/HandleLookup";
+import type { FoundUser } from "@bundle:com.example.opentwit/entry/ets/services/HandleLookup";
 import { TokenStore } from "@bundle:com.example.opentwit/entry/ets/common/TokenStore";
 import { FONT_FAMILY } from "@bundle:com.example.opentwit/entry/ets/common/Theme";
 import { TweetCard } from "@bundle:com.example.opentwit/entry/ets/components/TweetCard";
@@ -22,6 +26,7 @@ export class Explore extends ViewPU {
         this.__selectedTab = new ObservedPropertySimplePU(0, this, "selectedTab");
         this.__tweets = new ObservedPropertyObjectPU([], this, "tweets");
         this.__handle = new ObservedPropertySimplePU('', this, "handle");
+        this.__foundUser = new ObservedPropertyObjectPU(undefined, this, "foundUser");
         this.setInitiallyProvidedValue(params);
         this.finalizeConstruction();
     }
@@ -38,6 +43,9 @@ export class Explore extends ViewPU {
         if (params.handle !== undefined) {
             this.handle = params.handle;
         }
+        if (params.foundUser !== undefined) {
+            this.foundUser = params.foundUser;
+        }
     }
     updateStateVars(params: Explore_Params) {
     }
@@ -46,12 +54,14 @@ export class Explore extends ViewPU {
         this.__selectedTab.purgeDependencyOnElmtId(rmElmtId);
         this.__tweets.purgeDependencyOnElmtId(rmElmtId);
         this.__handle.purgeDependencyOnElmtId(rmElmtId);
+        this.__foundUser.purgeDependencyOnElmtId(rmElmtId);
     }
     aboutToBeDeleted() {
         this.__query.aboutToBeDeleted();
         this.__selectedTab.aboutToBeDeleted();
         this.__tweets.aboutToBeDeleted();
         this.__handle.aboutToBeDeleted();
+        this.__foundUser.aboutToBeDeleted();
         SubscriberManager.Get().delete(this.id__());
         this.aboutToBeDeletedInternal();
     }
@@ -82,6 +92,21 @@ export class Explore extends ViewPU {
     }
     set handle(newValue: string) {
         this.__handle.set(newValue);
+    }
+    private __foundUser: ObservedPropertyObjectPU<FoundUser | undefined>;
+    get foundUser() {
+        return this.__foundUser.get();
+    }
+    set foundUser(newValue: FoundUser | undefined) {
+        this.__foundUser.set(newValue);
+    }
+    async searchUser(value: string): Promise<void> {
+        try {
+            this.foundUser = await HandleLookup.lookup(value);
+        }
+        catch (e) {
+            this.foundUser = undefined;
+        }
     }
     async loadLive(): Promise<void> {
         try {
@@ -146,9 +171,64 @@ export class Explore extends ViewPU {
             });
             Search.onSubmit((value: string) => {
                 this.query = value;
+                this.searchUser(value);
             });
         }, Search);
         Search.pop();
+        this.observeComponentCreation2((elmtId, isInitialRender) => {
+            Button.createWithLabel('Search');
+            Button.width('92%');
+            Button.backgroundColor({ "id": 16777229, "type": 10001, params: [], "bundleName": "com.example.opentwit", "moduleName": "entry" });
+            Button.onClick(() => {
+                this.searchUser(this.query);
+            });
+        }, Button);
+        Button.pop();
+        this.observeComponentCreation2((elmtId, isInitialRender) => {
+            If.create();
+            if (this.foundUser !== undefined) {
+                this.ifElseBranchUpdateFunction(0, () => {
+                    this.observeComponentCreation2((elmtId, isInitialRender) => {
+                        Row.create();
+                        Row.width('92%');
+                        Row.padding(12);
+                        Row.backgroundColor({ "id": 16777228, "type": 10001, params: [], "bundleName": "com.example.opentwit", "moduleName": "entry" });
+                        Row.borderRadius(12);
+                        Row.onClick(() => {
+                            router.pushUrl({ url: 'pages/UserProfile', params: { handle: (this.foundUser as FoundUser).handle } });
+                        });
+                    }, Row);
+                    this.observeComponentCreation2((elmtId, isInitialRender) => {
+                        Column.create({ space: 2 });
+                        Column.layoutWeight(1);
+                        Column.alignItems(HorizontalAlign.Start);
+                    }, Column);
+                    this.observeComponentCreation2((elmtId, isInitialRender) => {
+                        Text.create((this.foundUser as FoundUser).name);
+                        Text.fontSize(16);
+                        Text.fontColor({ "id": 16777230, "type": 10001, params: [], "bundleName": "com.example.opentwit", "moduleName": "entry" });
+                        Text.fontFamily(FONT_FAMILY);
+                        Text.width('100%');
+                    }, Text);
+                    Text.pop();
+                    this.observeComponentCreation2((elmtId, isInitialRender) => {
+                        Text.create((this.foundUser as FoundUser).handle);
+                        Text.fontSize(13);
+                        Text.fontColor({ "id": 16777233, "type": 10001, params: [], "bundleName": "com.example.opentwit", "moduleName": "entry" });
+                        Text.fontFamily(FONT_FAMILY);
+                        Text.width('100%');
+                    }, Text);
+                    Text.pop();
+                    Column.pop();
+                    Row.pop();
+                });
+            }
+            else {
+                this.ifElseBranchUpdateFunction(1, () => {
+                });
+            }
+        }, If);
+        If.pop();
         this.observeComponentCreation2((elmtId, isInitialRender) => {
             Tabs.create({ barPosition: BarPosition.Start, index: this.selectedTab });
             Tabs.width('100%');
@@ -216,7 +296,7 @@ export class Explore extends ViewPU {
                                                             content: item.content,
                                                             likes: item.likes,
                                                             reposts: item.reposts
-                                                        }, undefined, elmtId, () => { }, { page: "entry/src/main/ets/pages/Explore.ets", line: 84, col: 23 });
+                                                        }, undefined, elmtId, () => { }, { page: "entry/src/main/ets/pages/Explore.ets", line: 127, col: 23 });
                                                         ViewPU.create(componentCall);
                                                         let paramsLambda = () => {
                                                             return {
@@ -319,7 +399,7 @@ export class Explore extends ViewPU {
                                                             content: item.content,
                                                             likes: item.likes,
                                                             reposts: item.reposts
-                                                        }, undefined, elmtId, () => { }, { page: "entry/src/main/ets/pages/Explore.ets", line: 117, col: 23 });
+                                                        }, undefined, elmtId, () => { }, { page: "entry/src/main/ets/pages/Explore.ets", line: 160, col: 23 });
                                                         ViewPU.create(componentCall);
                                                         let paramsLambda = () => {
                                                             return {

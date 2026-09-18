@@ -1,4 +1,6 @@
+import router from '@ohos.router';
 import { WebTimeline } from '../services/WebTimeline';
+import { HandleLookup, FoundUser } from '../services/HandleLookup';
 import { TokenStore } from '../common/TokenStore';
 import { FONT_FAMILY } from '../common/Theme';
 import { TweetCard } from '../components/TweetCard';
@@ -10,6 +12,15 @@ export struct Explore {
   @State selectedTab: number = 0;
   @State tweets: TweetData[] = [];
   @State handle: string = '';
+  @State foundUser: FoundUser | undefined = undefined;
+
+  async searchUser(value: string): Promise<void> {
+    try {
+      this.foundUser = await HandleLookup.lookup(value);
+    } catch (e) {
+      this.foundUser = undefined;
+    }
+  }
 
   async loadLive(): Promise<void> {
     try {
@@ -65,7 +76,39 @@ export struct Explore {
           })
           .onSubmit((value: string) => {
             this.query = value;
+            this.searchUser(value);
           })
+        Button('Search')
+          .width('92%')
+          .backgroundColor($r('app.color.hw_primary'))
+          .onClick(() => {
+            this.searchUser(this.query);
+          })
+        if (this.foundUser !== undefined) {
+          Row() {
+            Column({ space: 2 }) {
+              Text((this.foundUser as FoundUser).name)
+                .fontSize(16)
+                .fontColor($r('app.color.hw_text_primary'))
+                .fontFamily(FONT_FAMILY)
+                .width('100%');
+              Text((this.foundUser as FoundUser).handle)
+                .fontSize(13)
+                .fontColor($r('app.color.hw_text_grey'))
+                .fontFamily(FONT_FAMILY)
+                .width('100%');
+            }
+            .layoutWeight(1)
+            .alignItems(HorizontalAlign.Start);
+          }
+          .width('92%')
+          .padding(12)
+          .backgroundColor($r('app.color.hw_card_light'))
+          .borderRadius(12)
+          .onClick(() => {
+            router.pushUrl({ url: 'pages/UserProfile', params: { handle: (this.foundUser as FoundUser).handle } });
+          })
+        }
         Tabs({ barPosition: BarPosition.Start, index: this.selectedTab }) {
           TabContent() {
             Column() {

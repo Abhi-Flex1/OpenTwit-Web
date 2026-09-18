@@ -60,6 +60,26 @@ export class Login extends ViewPU {
             Column.padding(16);
         }, Column);
         this.observeComponentCreation2((elmtId, isInitialRender) => {
+            Row.create({ space: 4 });
+            Row.width('100%');
+            Row.alignItems(VerticalAlign.Center);
+            Row.onClick(() => {
+                router.back();
+            });
+        }, Row);
+        this.observeComponentCreation2((elmtId, isInitialRender) => {
+            SymbolGlyph.create({ "id": 125832663, "type": 40000, params: [], "bundleName": "com.example.opentwit", "moduleName": "entry" });
+            SymbolGlyph.fontSize(22);
+            SymbolGlyph.fontColor([{ "id": 16777229, "type": 10001, params: [], "bundleName": "com.example.opentwit", "moduleName": "entry" }]);
+        }, SymbolGlyph);
+        this.observeComponentCreation2((elmtId, isInitialRender) => {
+            Text.create('Back');
+            Text.fontSize(16);
+            Text.fontColor({ "id": 16777229, "type": 10001, params: [], "bundleName": "com.example.opentwit", "moduleName": "entry" });
+        }, Text);
+        Text.pop();
+        Row.pop();
+        this.observeComponentCreation2((elmtId, isInitialRender) => {
             TextInput.create({ placeholder: 'Handle', text: this.handle });
             TextInput.onChange((value: string) => {
                 this.handle = value;

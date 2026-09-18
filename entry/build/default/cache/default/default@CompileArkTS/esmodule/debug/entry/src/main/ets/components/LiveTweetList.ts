@@ -16,6 +16,8 @@ export interface LiveTweetItem {
     replies: number;
     reposts: number;
     likes: number;
+    avatarUrl?: string;
+    tweetId?: string;
 }
 export class LiveTweetList extends ViewPU {
     constructor(parent, params, __localStorage, elmtId = -1, paramsLambda = undefined, extraInfo) {
@@ -155,8 +157,10 @@ export class LiveTweetList extends ViewPU {
                                                     content: item.content,
                                                     replies: item.replies,
                                                     reposts: item.reposts,
-                                                    likes: item.likes
-                                                }, undefined, elmtId, () => { }, { page: "entry/src/main/ets/components/LiveTweetList.ets", line: 54, col: 13 });
+                                                    likes: item.likes,
+                                                    avatarUrl: item.avatarUrl,
+                                                    tweetId: item.tweetId
+                                                }, undefined, elmtId, () => { }, { page: "entry/src/main/ets/components/LiveTweetList.ets", line: 56, col: 13 });
                                                 ViewPU.create(componentCall);
                                                 let paramsLambda = () => {
                                                     return {
@@ -166,7 +170,9 @@ export class LiveTweetList extends ViewPU {
                                                         content: item.content,
                                                         replies: item.replies,
                                                         reposts: item.reposts,
-                                                        likes: item.likes
+                                                        likes: item.likes,
+                                                        avatarUrl: item.avatarUrl,
+                                                        tweetId: item.tweetId
                                                     };
                                                 };
                                                 componentCall.paramsGenerator_ = paramsLambda;
@@ -179,7 +185,9 @@ export class LiveTweetList extends ViewPU {
                                                     content: item.content,
                                                     replies: item.replies,
                                                     reposts: item.reposts,
-                                                    likes: item.likes
+                                                    likes: item.likes,
+                                                    avatarUrl: item.avatarUrl,
+                                                    tweetId: item.tweetId
                                                 });
                                             }
                                         }, { name: "TweetCard" });
