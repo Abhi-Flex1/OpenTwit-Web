@@ -1,6 +1,7 @@
 import { LiveTweetList, LiveTweetItem } from '../components/LiveTweetList';
 import { Composer } from '../components/Composer';
 import { WebCache } from '../viewmodels/WebCache';
+import { WebTimeline } from '../services/WebTimeline';
 import { TokenStore } from '../common/TokenStore';
 import { LIGHT_THEME_COLOR } from '../common/Theme';
 
@@ -8,6 +9,7 @@ import { LIGHT_THEME_COLOR } from '../common/Theme';
 export struct Home {
   @State tweets: LiveTweetItem[] = [];
   @State isRefreshing: boolean = false;
+  @State isLoading: boolean = true;
   @State showComposer: boolean = false;
   @State searchText: string = '';
   @State currentHandle: string = '';
@@ -15,17 +17,21 @@ export struct Home {
   async loadTimeline() {
     try {
       // Everything from Twitter web: no API key, no mock data.
-      // With no saved handle, load the default live handle from the web.
+      // With no saved handle, load verified live posts from the web.
       const handle: string = await TokenStore.loadHandle(getContext(this));
       if (handle !== '') {
         this.currentHandle = handle;
         this.tweets = await WebCache.loadWeb(handle);
-        return;
+        if (this.tweets.length > 0) {
+          return;
+        }
       }
-      this.tweets = await WebCache.loadWeb('@x');
+      // Handle lookup came back empty: show verified live posts instead.
+      this.tweets = await WebTimeline.fetchStarterTimeline();
     } catch (e) {
       this.tweets = [];
     }
+    this.isLoading = false;
   }
 
   aboutToAppear() {
@@ -49,7 +55,9 @@ export struct Home {
           Refresh({ refreshing: $$this.isRefreshing, friction: 62 }) {
             LiveTweetList({
               tweets: this.tweets,
+              isLoading: this.isLoading,
               onRetry: () => {
+                this.isLoading = true;
                 this.loadTimeline();
               }
             })
