@@ -9,6 +9,19 @@ export struct Login {
 
   build() {
     Column({ space: 12 }) {
+      Row({ space: 4 }) {
+        SymbolGlyph($r('sys.symbol.chevron_left'))
+          .fontSize(22)
+          .fontColor([$r('app.color.hw_primary')]);
+        Text('Back')
+          .fontSize(16)
+          .fontColor($r('app.color.hw_primary'));
+      }
+      .width('100%')
+      .alignItems(VerticalAlign.Center)
+      .onClick(() => {
+        router.back();
+      })
       TextInput({ placeholder: 'Handle', text: this.handle })
         .onChange((value: string) => {
           this.handle = value;

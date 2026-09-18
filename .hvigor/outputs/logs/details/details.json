@@ -40,19 +40,19 @@
     "BUILD_ANALYSIS_MODE": "normal",
     "TASK_TIME": {
       "923fe53966c6cd9343e11af776cd4b05be315ea4b200b02e4d5dfb0f929b73bf": {
-        "CreateModuleInfo": 891041,
-        "ConfigureCmake": 180541,
-        "PreCheckSyscap": 609209,
-        "GeneratePkgContextInfo": 6687000,
-        "ProcessIntegratedHsp": 461750,
-        "BuildNativeWithCmake": 151417,
-        "ProcessStartupConfig": 1191458,
-        "BuildNativeWithNinja": 355750,
-        "BuildJS": 1104750,
-        "CompileArkTS": 5867441292,
-        "ProcessCompiledResources": 416667,
-        "PackageHap": 601369417,
-        "PackingCheck": 8371958
+        "CreateModuleInfo": 289500,
+        "ConfigureCmake": 70042,
+        "PreCheckSyscap": 164209,
+        "GeneratePkgContextInfo": 2571459,
+        "ProcessIntegratedHsp": 200667,
+        "BuildNativeWithCmake": 67542,
+        "ProcessStartupConfig": 429583,
+        "BuildNativeWithNinja": 147292,
+        "BuildJS": 491333,
+        "CompileArkTS": 2418479458,
+        "ProcessCompiledResources": 146291,
+        "PackageHap": 282055333,
+        "PackingCheck": 2321167
       }
     },
     "CUSTOM_TASK_TIME": {},
@@ -65,7 +65,7 @@
       "ENABLE_CPP_FUNCTION_LEVEL_INCREMENTAL": false
     },
     "CONFIG_PROPERTIES": {},
-    "BUILD_ID": "202609182156535750",
+    "BUILD_ID": "202609182232520730",
     "ERROR_MESSAGE": [
       {
         "CODE": "00303116",
@@ -74,7 +74,7 @@
           "Re-execute sign your app/atomic service automatically：clear the signingConfigs field in the /Users/abhi/Desktop/HarmonyOS Ports/OpenTwit-Web/build-profile.json5 file and go to Project Structure > Project > Signing Configs and apply the signature material",
           "Verify if signingConfigs is overridden in the project-level and module-level hvigorfile.ts. If so, use the error message to ensure the configuration is correct."
         ],
-        "TIMESTAMP": "1789761421347"
+        "TIMESTAMP": "1789763575364"
       },
       {
         "CODE": "00303116",
@@ -132,6 +132,6 @@
         }
       }
     ],
-    "TOTAL_TIME": 7798021583
+    "TOTAL_TIME": 3300718500
   }
 }

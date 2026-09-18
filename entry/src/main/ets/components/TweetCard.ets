@@ -1,3 +1,4 @@
+import router from '@ohos.router';
 import { FONT_FAMILY } from '../common/Theme';
 
 @Component
@@ -9,17 +10,32 @@ export struct TweetCard {
   @Prop replies: number = 0;
   @Prop reposts: number;
   @Prop likes: number;
+  @Prop avatarUrl: string = '';
+  @Prop tweetId: string = '';
 
   build() {
     Column() {
       Row({ space: 12 }) {
-        Stack({ alignContent: Alignment.Center }) {
-          Circle({ width: 44, height: 44 })
-            .fill($r('app.color.hw_primary'))
-          Text(this.userName.charAt(0))
-            .fontSize(20)
-            .fontColor(Color.White)
-            .fontFamily(FONT_FAMILY)
+        if (this.avatarUrl !== '') {
+          Image(this.avatarUrl)
+            .width(44)
+            .height(44)
+            .borderRadius(22)
+            .onClick(() => {
+              router.pushUrl({ url: 'pages/UserProfile', params: { handle: this.handle } });
+            })
+        } else {
+          Stack({ alignContent: Alignment.Center }) {
+            Circle({ width: 44, height: 44 })
+              .fill($r('app.color.hw_primary'))
+            Text(this.userName.charAt(0))
+              .fontSize(20)
+              .fontColor(Color.White)
+              .fontFamily(FONT_FAMILY)
+          }
+          .onClick(() => {
+            router.pushUrl({ url: 'pages/UserProfile', params: { handle: this.handle } });
+          })
         }
 
         Column({ space: 6 }) {
@@ -67,6 +83,9 @@ export struct TweetCard {
         }
         .layoutWeight(1)
         .alignItems(HorizontalAlign.Start)
+        .onClick(() => {
+          router.pushUrl({ url: 'pages/Detail', params: { handle: this.handle, tweetId: this.tweetId } });
+        })
       }
       .width('100%')
       .alignItems(VerticalAlign.Top)
