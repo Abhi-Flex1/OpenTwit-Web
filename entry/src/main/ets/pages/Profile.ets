@@ -18,6 +18,17 @@ export struct Profile {
     this.loadHandle();
   }
 
+  private static initialOf(handle: string): string {
+    if (handle === '') {
+      return '';
+    }
+    let name: string = handle.startsWith('@') ? handle.substring(1) : handle;
+    if (name === '') {
+      return '';
+    }
+    return name.charAt(0).toUpperCase();
+  }
+
   build() {
     Navigation() {
       Column({ space: 0 }) {
@@ -28,10 +39,11 @@ export struct Profile {
             .backgroundColor($r('app.color.hw_primary'));
           Row({ space: 12 }) {
             Stack({ alignContent: Alignment.Center }) {
+              Circle({ width: 80, height: 80 })
+                .fill(Color.White)
               Circle({ width: 72, height: 72 })
                 .fill($r('app.color.hw_primary'))
-                .border({ width: 3, color: Color.White })
-              Text(this.handle.length > 1 ? this.handle.charAt(1).toUpperCase() : '')
+              Text(Profile.initialOf(this.handle))
                 .fontSize(28)
                 .fontColor(Color.White)
                 .fontFamily(FONT_FAMILY);
