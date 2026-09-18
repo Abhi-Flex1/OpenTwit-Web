@@ -4,6 +4,7 @@ if (!("finalizeConstruction" in ViewPU.prototype)) {
 interface Home_Params {
     tweets?: LiveTweetItem[];
     isRefreshing?: boolean;
+    isLoading?: boolean;
     showComposer?: boolean;
     searchText?: string;
     currentHandle?: string;
@@ -12,6 +13,7 @@ import { LiveTweetList } from "@bundle:com.example.opentwit/entry/ets/components
 import type { LiveTweetItem } from "@bundle:com.example.opentwit/entry/ets/components/LiveTweetList";
 import { Composer } from "@bundle:com.example.opentwit/entry/ets/components/Composer";
 import { WebCache } from "@bundle:com.example.opentwit/entry/ets/viewmodels/WebCache";
+import { WebTimeline } from "@bundle:com.example.opentwit/entry/ets/services/WebTimeline";
 import { TokenStore } from "@bundle:com.example.opentwit/entry/ets/common/TokenStore";
 import { LIGHT_THEME_COLOR } from "@bundle:com.example.opentwit/entry/ets/common/Theme";
 export class Home extends ViewPU {
@@ -22,6 +24,7 @@ export class Home extends ViewPU {
         }
         this.__tweets = new ObservedPropertyObjectPU([], this, "tweets");
         this.__isRefreshing = new ObservedPropertySimplePU(false, this, "isRefreshing");
+        this.__isLoading = new ObservedPropertySimplePU(true, this, "isLoading");
         this.__showComposer = new ObservedPropertySimplePU(false, this, "showComposer");
         this.__searchText = new ObservedPropertySimplePU('', this, "searchText");
         this.__currentHandle = new ObservedPropertySimplePU('', this, "currentHandle");
@@ -34,6 +37,9 @@ export class Home extends ViewPU {
         }
         if (params.isRefreshing !== undefined) {
             this.isRefreshing = params.isRefreshing;
+        }
+        if (params.isLoading !== undefined) {
+            this.isLoading = params.isLoading;
         }
         if (params.showComposer !== undefined) {
             this.showComposer = params.showComposer;
@@ -50,6 +56,7 @@ export class Home extends ViewPU {
     purgeVariableDependenciesOnElmtId(rmElmtId) {
         this.__tweets.purgeDependencyOnElmtId(rmElmtId);
         this.__isRefreshing.purgeDependencyOnElmtId(rmElmtId);
+        this.__isLoading.purgeDependencyOnElmtId(rmElmtId);
         this.__showComposer.purgeDependencyOnElmtId(rmElmtId);
         this.__searchText.purgeDependencyOnElmtId(rmElmtId);
         this.__currentHandle.purgeDependencyOnElmtId(rmElmtId);
@@ -57,6 +64,7 @@ export class Home extends ViewPU {
     aboutToBeDeleted() {
         this.__tweets.aboutToBeDeleted();
         this.__isRefreshing.aboutToBeDeleted();
+        this.__isLoading.aboutToBeDeleted();
         this.__showComposer.aboutToBeDeleted();
         this.__searchText.aboutToBeDeleted();
         this.__currentHandle.aboutToBeDeleted();
@@ -76,6 +84,13 @@ export class Home extends ViewPU {
     }
     set isRefreshing(newValue: boolean) {
         this.__isRefreshing.set(newValue);
+    }
+    private __isLoading: ObservedPropertySimplePU<boolean>;
+    get isLoading() {
+        return this.__isLoading.get();
+    }
+    set isLoading(newValue: boolean) {
+        this.__isLoading.set(newValue);
     }
     private __showComposer: ObservedPropertySimplePU<boolean>;
     get showComposer() {
@@ -101,18 +116,22 @@ export class Home extends ViewPU {
     async loadTimeline() {
         try {
             // Everything from Twitter web: no API key, no mock data.
-            // With no saved handle, load the default live handle from the web.
+            // With no saved handle, load verified live posts from the web.
             const handle: string = await TokenStore.loadHandle(getContext(this));
             if (handle !== '') {
                 this.currentHandle = handle;
                 this.tweets = await WebCache.loadWeb(handle);
-                return;
+                if (this.tweets.length > 0) {
+                    return;
+                }
             }
-            this.tweets = await WebCache.loadWeb('@x');
+            // Handle lookup came back empty: show verified live posts instead.
+            this.tweets = await WebTimeline.fetchStarterTimeline();
         }
         catch (e) {
             this.tweets = [];
         }
+        this.isLoading = false;
     }
     aboutToAppear() {
         this.loadTimeline();
@@ -171,15 +190,19 @@ export class Home extends ViewPU {
                 if (isInitialRender) {
                     let componentCall = new LiveTweetList(this, {
                         tweets: this.tweets,
+                        isLoading: this.isLoading,
                         onRetry: () => {
+                            this.isLoading = true;
                             this.loadTimeline();
                         }
-                    }, undefined, elmtId, () => { }, { page: "entry/src/main/ets/pages/Home.ets", line: 50, col: 13 });
+                    }, undefined, elmtId, () => { }, { page: "entry/src/main/ets/pages/Home.ets", line: 56, col: 13 });
                     ViewPU.create(componentCall);
                     let paramsLambda = () => {
                         return {
                             tweets: this.tweets,
+                            isLoading: this.isLoading,
                             onRetry: () => {
+                                this.isLoading = true;
                                 this.loadTimeline();
                             }
                         };
@@ -188,7 +211,8 @@ export class Home extends ViewPU {
                 }
                 else {
                     this.updateStateVarsOfChildByElmtId(elmtId, {
-                        tweets: this.tweets
+                        tweets: this.tweets,
+                        isLoading: this.isLoading
                     });
                 }
             }, { name: "LiveTweetList" });
@@ -239,7 +263,7 @@ export class Home extends ViewPU {
                                         this.tweets.unshift(mine);
                                         this.showComposer = false;
                                     }
-                                }, undefined, elmtId, () => { }, { page: "entry/src/main/ets/pages/Home.ets", line: 84, col: 11 });
+                                }, undefined, elmtId, () => { }, { page: "entry/src/main/ets/pages/Home.ets", line: 92, col: 11 });
                                 ViewPU.create(componentCall);
                                 let paramsLambda = () => {
                                     return {

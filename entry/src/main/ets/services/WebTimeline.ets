@@ -1,4 +1,5 @@
 import http from '@ohos.net.http';
+import { hilog } from '@kit.PerformanceAnalysisKit';
 
 export class TweetData {
   userName: string;
@@ -25,6 +26,15 @@ class CacheEntry {
   timestamp: number = 0;
 }
 
+export class StarterRef {
+  handle: string;
+  id: string;
+  constructor(handle: string, id: string) {
+    this.handle = handle;
+    this.id = id;
+  }
+}
+
 export class WebTimeline {
   static userAgent: string = 'OpenTwit-Web HarmonyOS WebView';
   private static cache: Record<string, CacheEntry> = {};
@@ -48,8 +58,11 @@ export class WebTimeline {
         method: http.RequestMethod.GET,
         header: {
           'User-Agent': WebTimeline.userAgent
-        }
+        },
+        connectTimeout: 300000,
+        readTimeout: 300000
       });
+      hilog.info(0x0000, 'OpenTwit', 'getJson url=%{public}s code=%{public}d', url, response ? response.responseCode : -1);
       if (response && response.responseCode === 200 && response.result) {
         return JSON.parse(response.result as string) as ESObject;
       }
@@ -127,6 +140,167 @@ export class WebTimeline {
       return WebTimeline.mapItems(fallback, '@' + name);
     }
     return [];
+  }
+
+  static async fetchStarterTimeline(): Promise<TweetData[]> {
+    let key: string = '@starter';
+    let cached: CacheEntry | undefined = WebTimeline.cache[key];
+    if (WebTimeline.isFresh(cached)) {
+      return (cached as CacheEntry).tweets;
+    }
+    let refs: StarterRef[] = [
+      new StarterRef('elonmusk', '1518623997054918657'),
+      new StarterRef('BarackObama', '1221552460768202756'),
+      new StarterRef('JoeBiden', '1325118992785223682'),
+      new StarterRef('GretaThunberg', '1608056944501178368'),
+      new StarterRef('BTS_twt', '1256648835272605697'),
+      new StarterRef('IncredibleCulk', '1298730289737293824'),
+      new StarterRef('TwitterDev', '1460323737035677698'),
+      new StarterRef('jack', '20')
+    ];
+    // One batch: a slow network costs one batch, not one batch per post.
+    let pending: Promise<TweetData | undefined>[] = [];
+    for (let i: number = 0; i < refs.length; i++) {
+      pending.push(WebTimeline.fetchStatus(refs[i].handle, refs[i].id));
+    }
+    hilog.info(0x0000, 'OpenTwit', 'starter batch start count=%{public}d', pending.length);
+    let done: (TweetData | undefined)[] = await Promise.all(pending);
+    hilog.info(0x0000, 'OpenTwit', 'starter batch done');
+    let tweets: TweetData[] = [];
+    for (let i: number = 0; i < done.length; i++) {
+      if (done[i]) {
+        tweets.push(done[i] as TweetData);
+      }
+    }
+    WebTimeline.cache[key] = { tweets: tweets, timestamp: Date.now() } as CacheEntry;
+    return tweets;
+  }
+
+  private static async fetchStatus(handle: string, id: string): Promise<TweetData | undefined> {
+    let fx: ESObject | undefined = await WebTimeline.getJson('https://api.fxtwitter.com/' + handle + '/status/' + id);
+    if (fx) {
+      let mapped: TweetData | undefined = WebTimeline.mapStatus(fx, handle);
+      if (mapped) {
+        return mapped;
+      }
+    }
+    let oe: ESObject | undefined = await WebTimeline.getJson('https://publish.twitter.com/oembed?url=https://twitter.com/' + handle + '/status/' + id);
+    if (oe) {
+      return WebTimeline.mapOembed(oe, handle);
+    }
+    return undefined;
+  }
+
+  private static mapStatus(parsed: ESObject, handle: string): TweetData | undefined {
+    try {
+      let rec: Record<string, ESObject> = parsed as Record<string, ESObject>;
+      let twObj: ESObject | undefined = rec['tweet'];
+      if (!twObj) {
+        return undefined;
+      }
+      let tw: Record<string, ESObject> = twObj as Record<string, ESObject>;
+      if (!tw['text']) {
+        return undefined;
+      }
+      let text: string = tw['text'] as string;
+      let name: string = handle;
+      let screen: string = '@' + handle;
+      if (tw['author']) {
+        let ar: Record<string, ESObject> = (tw['author'] as Record<string, ESObject>);
+        if (ar['name']) {
+          name = ar['name'] as string;
+        }
+        if (ar['screen_name']) {
+          screen = '@' + (ar['screen_name'] as string);
+        }
+      }
+      let likes: number = 0;
+      if (tw['likes']) {
+        likes = Number(tw['likes']);
+      }
+      let reposts: number = 0;
+      if (tw['retweets']) {
+        reposts = Number(tw['retweets']);
+      }
+      let replies: number = 0;
+      if (tw['replies']) {
+        replies = Number(tw['replies']);
+      }
+      let time: string = 'live';
+      if (tw['created_at']) {
+        time = WebTimeline.shortDate(tw['created_at'] as string);
+      }
+      let tweet: TweetData = new TweetData(name, screen, time, text, likes, reposts);
+      tweet.replies = replies;
+      return tweet;
+    } catch (err) {
+      return undefined;
+    }
+  }
+
+  private static shortDate(created: string): string {
+    let parts: string[] = created.split(' ');
+    if (parts.length >= 6) {
+      return parts[1] + ' ' + parts[2] + ', ' + parts[5];
+    }
+    return 'live';
+  }
+
+  private static mapOembed(parsed: ESObject, handle: string): TweetData | undefined {
+    try {
+      let rec: Record<string, ESObject> = parsed as Record<string, ESObject>;
+      if (!rec['html']) {
+        return undefined;
+      }
+      let html: string = rec['html'] as string;
+      let pStart: number = html.indexOf('<p');
+      if (pStart < 0) {
+        return undefined;
+      }
+      let gt: number = html.indexOf('>', pStart);
+      let pEnd: number = html.indexOf('</p>', gt);
+      if (gt < 0 || pEnd < 0) {
+        return undefined;
+      }
+      let text: string = WebTimeline.stripTags(html.substring(gt + 1, pEnd));
+      if (text === '') {
+        return undefined;
+      }
+      let name: string = handle;
+      if (rec['author_name']) {
+        name = rec['author_name'] as string;
+      }
+      return new TweetData(name, '@' + handle, 'live', text, 0, 0);
+    } catch (err) {
+      return undefined;
+    }
+  }
+
+  private static stripTags(html: string): string {
+    let out: string = '';
+    let inTag: boolean = false;
+    for (let i: number = 0; i < html.length; i++) {
+      let ch: string = html.charAt(i);
+      if (ch === '<') {
+        inTag = true;
+        continue;
+      }
+      if (ch === '>') {
+        inTag = false;
+        out += ' ';
+        continue;
+      }
+      if (!inTag) {
+        out += ch;
+      }
+    }
+    out = out.split('&amp;').join('&');
+    out = out.split('&lt;').join('<');
+    out = out.split('&gt;').join('>');
+    out = out.split('&#39;').join('\'');
+    out = out.split('&quot;').join('"');
+    out = out.split('&#x27;').join('\'');
+    return out;
   }
 
   private static mapTrends(parsed: ESObject | undefined): string[] {
