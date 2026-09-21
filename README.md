@@ -5,15 +5,43 @@ Previous native-API mock (8 starter posts via fxtwitter/syndication) was **repla
 
 ## Features
 - **Full web Twitter**: `https://x.com/home`, `/explore`, `/notifications`, `/messages`, `/settings/profile` — login via web cookies, no API key
-- **Native shell**: custom Navigation title (tab name or `@handle` + live `x.com` path subtitle), per-tab menu actions (Search, Notification settings, New message, Edit profile / Create account, Desktop site, Refresh), linear progress + first-load spinner, bottom bar (Home/Explore/Notifications/Messages/Profile) with `house`, `magnifyingglass`, `bell`, `envelope`, `person` symbols — it becomes a **side navigation rail** on wide layouts (tablet / unfolded foldable / 2in1), with a haptic tick on tab change
-- **Native compose**: floating compose button on the four content tabs opening a native bottom sheet (Cancel / New post / Post) that hosts `x.com/compose/post`; Post drives the page's own submit button and reports the outcome as a native toast
-- **Native web-chrome removal**: X's own top nav, bottom nav and floating compose button are stripped by injected CSS/JS (`common/WebChrome.ets`) so the shell never double-renders chrome
-- **Desktop site toggle**: persisted user preference switching the custom user agent, needed for the parts of x.com that the mobile web path hides (X refuses e-mail sign-up on mobile web)
+- **Native shell**: linear progress + first-load spinner, bottom bar (Home/Explore/Notifications/Messages/Profile) with the filled HarmonyOS Symbols `house_fill`, `compass_circle_fill`, `bell_fill`, `envelope_fill`, `person_fill` — the same filled glyph in both states, with system blue for the selected tab, secondary grey otherwise, and a native unread badge on Notifications. It becomes a **side navigation rail** on wide layouts (tablet / unfolded foldable / 2in1), with a haptic tick on tab change
+- **Native headers, laid out like the stock app**: Home gets the account avatar plus a native "For you / Following" switcher that drives the page's real timeline tab; Explore puts a native `Search` field in the header (it also stays put on result pages); Notifications/Messages/Profile get a centred title over a subtitle (`@handle` on profiles) with at most one trailing gear — notification settings, settings, settings — and nothing else. Pages pushed from a tab keep a back arrow and a real page name, never a duplicated tab label
+- **Native account menu**: the Home avatar opens a HarmonyOS menu for Profile, Bookmarks, Lists and Settings and privacy, so those pages are one tap away instead of buried in the web UI
+- **Native compose**: floating compose button on the four content tabs opening a native bottom sheet (Cancel / New post / Post) that hosts `x.com/compose/post`; Post drives the page's own submit button and reports the outcome as a native toast. On Messages the same button starts a new direct message, as the stock app does
+- **Native web-chrome removal**: X's own top nav, bottom nav, page headers and floating compose button are stripped by injected CSS/JS (`common/WebChrome.ets`) so the shell never double-renders chrome; the shell reads the page instead — `document.title` for the header, the Home timeline's own tab row for the switcher, `aria-selected` to keep it in step
+- **Route-aware user agent**: the shell picks the UA each route needs (the desktop-class UA only for the e-mail sign-up flow, which x.com refuses on mobile web) instead of asking the user to toggle a desktop mode
 - **Tab sync**: in-page web navigation updates the native tab index via URL mapping
 - **Web hardening**: JavaScript + DOM storage on, `mixedMode(Compatible)`, `fileAccess(false)`, `CacheMode.Default`, `WebDarkMode.Auto`, zoom/overview on, autoplay gesture off, custom UA `OpenTwit-Web/1.0 HarmonyOS`
 - **Resilience**: native offline card with Retry on `onErrorReceive`, automatic render-process recovery on `onRenderExited`
 - **HarmonyOS compliance**: layered app icon, system colour resources (real light/dark), `app.string.*` localisation (en + zh_CN), native back navigation, geolocation consent dialog, system photo picker for uploads — see [docs/HARMONY_GUIDELINE_AUDIT.md](docs/HARMONY_GUIDELINE_AUDIT.md)
 - Phone / tablet, Stage model only, API 24
+
+## Signed build
+
+`dist/OpenTwit-Web-1.0.0-signed.hap` is built by `scripts/sign-hap.sh`, which
+signs the assembled HAP with the OpenHarmony test signing material that ships in
+the SDK (`toolchains/lib`). It installs and runs on an emulator image that trusts
+the OpenHarmony test root — verified on the foldable AVD. Retail HarmonyOS
+devices want an AppGallery-issued certificate and profile for
+`com.opentwit.web`, which only the account owner can request from AGC; swapping
+that material in is the only change the script needs. Details and the exact
+commands per step are in
+[docs/HARMONY_GUIDELINE_AUDIT.md](docs/HARMONY_GUIDELINE_AUDIT.md) §8.6.
+
+```bash
+ohpm install && hvigorw assembleHap --no-daemon   # produces the unsigned HAP
+./scripts/sign-hap.sh                             # -> dist/OpenTwit-Web-1.0.0-signed.hap
+hdc install -r dist/OpenTwit-Web-1.0.0-signed.hap # uninstall any unsigned build first
+```
+
+## Screenshots
+
+`screenshots/final/mobile/` — signed-in phone sweep (Home For you / Following,
+account menu, Explore + results, Notifications, notification settings, Messages,
+Profile, Settings). `screenshots/final/foldable/` — the same shell on the 955 vp
+foldable AVD: side rail, native header, account menu, compose sheet, plus the
+signed HAP running after install (that AVD is signed out; see the audit doc §8.5).
 
 ## Project layout (remade)
 - `AppScope/app.json5` — bundle `com.opentwit.web`

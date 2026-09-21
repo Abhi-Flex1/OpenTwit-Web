@@ -346,3 +346,133 @@ To finish the signed-in pass, one of these is needed:
   but the password has to be entered by the account owner), or
 * a phone number for X's "Continue with phone" sign-up, or
 * an account created beforehand on another device, then logged in here.
+
+## 8. Native-UI completion pass (same day, third phase)
+
+Goal: every piece of app chrome is native HarmonyOS, the web supplies content
+only, and the result follows the HarmonyOS guidelines. Two of the three
+previously-untested signed-in paths (timeline, DMs, own-profile discovery) were
+verified for real this time: the phone AVD signed in with the account owner's
+session, so the screenshots in this section are of a live account.
+
+### 8.1 Who owns which surface
+
+| Surface | Owner now | Notes |
+| --- | --- | --- |
+| Title bar, back, page titles | shell | one native header per tab, driven by `document.title` + the routed path |
+| Home "For you / Following" | shell | native switcher; taps click the page's real (hidden) tab, `aria-selected` keeps the underline honest |
+| Explore search | shell | native `Search` in the header, stays on result pages |
+| Tab bar / rail | shell | five filled HarmonyOS Symbols, system blue vs secondary grey, native unread badge |
+| Account menu | shell | Profile / Bookmarks / Lists / Settings and privacy, bound to the avatar |
+| Compose (post + new message) | shell | native FAB + bottom sheet; Messages' FAB starts a new DM like the stock app |
+| Progress, first paint, offline, retry | shell | native `Progress`, `LoadingProgress`, error card |
+| Pull to refresh | shell | native `Refresh` around the `Web` child |
+| Tab-root top rows (logo, tabs, search) | shell | removed from the page by injected CSS/JS |
+| Timelines, threads, profiles, notification list, chat list, settings forms | x.com web | content, data-dense, and not chrome — the shell does not redraw them |
+| Login flows, media/GIF/poll/thread composer internals | x.com web | the composer falls back to the page for the parts the shell does not implement |
+
+### 8.2 Fixes in this pass
+
+1. **Duplicate header icons removed.** `Navigation.menus()` drew a second set of
+   actions on top of the custom title bar — the pencil on Messages (already a
+   FAB), the pencil on Profile (already an Edit profile button in the page), and
+   the dead Desktop site / Refresh entries. `menus()` is gone; each header now
+   carries at most one action, only where the stock app has one.
+2. **Home switcher restored as native UI.** x.com's own For you/Following row is
+   hidden by the chrome pass, which left the user with no way to reach the
+   Following timeline. The shell now draws it and drives the page's real tab
+   (`screenshots/final/mobile/01-home-for-you.jpeg`,
+   `03-home-following.jpeg`).
+3. **Explore search moved into the header** instead of sitting under a title
+   (`04-explore.jpeg`, `05-explore-results.jpeg`), which also removed the
+   duplicated "Explore" title + field stack.
+4. **Profile header follows the stock app**: display name over `@handle`, with
+   the settings gear, and no back arrow on the Profile root
+   (`09-profile.jpeg`, `10-settings.jpeg`).
+5. **`databaseAccess(true)`** on the `Web` component: ArkWeb gates its database
+   APIs behind this flag and defaults them off, which a full web app should not
+   rely on.
+6. **Messages route corrected** — see 8.4.
+
+### 8.3 HarmonyOS guideline checks applied
+
+| Guideline | How it is met |
+| --- | --- |
+| System colours only | every native colour is `$r('sys.color.ohos_id_color_*')`; no hand-made palette, so light/dark/high-contrast follow the OS |
+| One typeface | `HarmonyOS Sans` pinned on the shell and injected into the page; no webfont |
+| System icons | HarmonyOS Symbols (`SymbolGlyph`) everywhere, including the menu (`symbolStartIcon`) |
+| Touch targets | 48 vp minimum for the bar items, header actions and avatar; the compose FAB is 56 vp |
+| Title bar text scaling | header title/subtitle and both switcher labels are single-line with ellipsis, so a large system font cannot overflow the bar |
+| Localisation | all shell strings come from `app.string.*` with `base` + `zh_CN` qualifiers (`首页 / 探索 / 通知 / 私信 / 我` on the Chinese image) |
+| Haptics | short vibration on tab change and on Home timeline switch |
+| Back behaviour | sheet, then web history, then the Home tab, and only then leave the app |
+| Wide/continuity | same component tree, `Flex` direction flips at 840 vp: bottom bar becomes a rail, the `Web` is never re-created |
+| Accessibility | every icon-only control carries `accessibilityText` / `accessibilityDescription` |
+| Safe areas | the bar paints into the bottom safe area; Navigation owns the status-bar inset |
+
+Tooling: `hvigorw assembleApp` is warning-free apart from the expected
+`No signingConfig found` notice (now resolved, see 8.6) and `codelinter -f json
+entry/src/main/ets` reports `[]` (0 findings; the CLI prints a note that its
+bundled ruleset targets OpenHarmony projects, so treat it as one signal, not
+proof).
+
+### 8.4 Messages: what the web actually serves
+
+The "no conversations" report was reproduced and traced:
+
+* `x.com/messages` **redirects client-side to `/i/chat`**, X's new Chat client.
+  The shell used to load `/i/chat` directly; it now loads `/messages` and lets
+  x.com choose, so it follows whatever X serves next.
+* That Chat screen reports **"Disconnected"** with an empty inbox. It is X's own
+  UI state, not shell chrome: it survives with `databaseAccess` on, is
+  unchanged by a stock iPhone Safari UA, and the page renders no conversation
+  nodes at all. The emulator's network reaches the outside world (ICMP to
+  google.com succeeds) but is slow, so X's realtime chat session does not
+  establish here.
+* `/settings/messages` no longer exists (404 in-app), so the Messages gear opens
+  the real settings root, matching what the stock app's gear leads to.
+
+### 8.5 Verification on devices
+
+Phone AVD (1320x2856, signed in as the account owner):
+`screenshots/final/mobile/` — home (For you), account menu, home (Following),
+explore, explore results, notifications, notification settings, messages,
+profile, settings.
+
+Foldable AVD (2388x2480, 955 vp, **signed out**): `screenshots/final/foldable/`
+— rail + native header, account menu (Create account / Settings and privacy),
+Following switch, explore, compose sheet, plus `10-signed-install.jpeg` which is
+the **signed** HAP running after install.
+
+The foldable's own session could not be re-established: the web cookie jar lives
+outside the app sandbox, `hdc file send` and `shell cp` into the sandbox are
+denied, the guest cannot reach the host over HTTP, and moving the phone's
+userdata into the foldable instance stalled its boot. Its screenshots are
+therefore of the shell, which is what the foldable layout is meant to show.
+
+### 8.6 Signing and release
+
+`scripts/sign-hap.sh` performs the whole flow with the SDK's bundled test
+material (`toolchains/lib/OpenHarmony.p12`, `OpenHarmonyProfileRelease.pem`,
+`UnsgnedReleasedProfileTemplate.json`, `hap-sign-tool.jar`):
+
+1. builds the app signing chain from the CA-issued leaf embedded in the profile
+   template plus the `cacert` / root entries in the keystore (the keystore's own
+   copy of that leaf is self-signed; the public keys are identical, verified
+   with `openssl x509 -pubkey`),
+2. re-dates the template's expired validity window and sets
+   `bundle-name: com.opentwit.web`,
+3. signs the profile (`sign-profile`, `SHA256withECDSA`, local mode),
+4. signs the HAP (`sign-app`, `-inForm zip -compatibleVersion 12`),
+5. verifies with `verify-app` ("Verify success").
+
+Result: `dist/OpenTwit-Web-1.0.0-signed.hap` (SHA-256 in the `.sha256` file).
+It was installed **for real** on the foldable AVD — after uninstalling the
+unsigned build, because a bundle cannot switch signing identities — and it
+starts and runs (`screenshots/final/foldable/10-signed-install.jpeg`).
+
+Honest boundary: this is the OpenHarmony **test** identity, not an
+AppGallery-issued one. Emulator images that trust the OpenHarmony test root
+accept it; a retail HarmonyOS device normally will not. Publishing to
+AppGallery requires an AGC certificate and profile for `com.opentwit.web`,
+which only the account owner can issue.

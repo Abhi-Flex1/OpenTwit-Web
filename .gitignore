@@ -1,6 +1,8 @@
 # Build output
 /build/
 /entry/build/
+dist/
+screenshots/audit/
 /.hvigor/
 /.idea/
 /.cxx/
