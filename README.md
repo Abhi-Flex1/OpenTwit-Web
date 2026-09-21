@@ -1,7 +1,9 @@
 # OpenTwit-Web
 Full Twitter/X web port for HarmonyOS — the real x.com web app inside a native HarmonyOS shell.
 
-Previous native-API mock (8 starter posts via fxtwitter/syndication) was **replaced**: this version loads `https://x.com` in the system `Web` component, so timeline, login, post, explore, notifications, DMs, profile all work with full web parity. Native feel comes from HarmonyOS chrome around it: Navigation title + progress, back/forward/reload, bottom `Tabs` with HarmonyOS Symbols, light/dark adaptation, offline retry, geolocation grant.
+[![Release](https://img.shields.io/github/v/release/Abhi-Flex1/OpenTwit-Web?display_name=tag)](https://github.com/Abhi-Flex1/OpenTwit-Web/releases/latest)
+
+Previous native-API mock (8 starter posts via fxtwitter/syndication) was **replaced**: this version loads `https://x.com` in the system `Web` component, so timeline, login, post, explore, notifications, DMs and profile all come from the real web app. Everything that is *chrome* is native HarmonyOS instead: per-tab headers with a native Home timeline switcher, Explore's search field, the account menu, compose FAB + sheet, a bottom bar that becomes a side rail, system colours (real light/dark), HarmonyOS Sans and Symbols throughout, offline retry, and a geolocation consent dialog.
 
 ## Features
 - **Full web Twitter**: `https://x.com/home`, `/explore`, `/notifications`, `/messages`, `/settings/profile` — login via web cookies, no API key
@@ -37,11 +39,39 @@ hdc install -r dist/OpenTwit-Web-1.0.0-signed.hap # uninstall any unsigned build
 
 ## Screenshots
 
-`screenshots/final/mobile/` — signed-in phone sweep (Home For you / Following,
-account menu, Explore + results, Notifications, notification settings, Messages,
-Profile, Settings). `screenshots/final/foldable/` — the same shell on the 955 vp
-foldable AVD: side rail, native header, account menu, compose sheet, plus the
-signed HAP running after install (that AVD is signed out; see the audit doc §8.5).
+All captures below are real device frames (`uitest screenCap` / `snapshot_display`),
+not mockups. Full-resolution files live in
+[`screenshots/final/`](screenshots/final).
+
+### Phone — 1320 x 2856, signed in (377 vp, bottom bar)
+
+| | |
+| --- | --- |
+| <img src="screenshots/final/mobile/01-home-for-you.jpeg" width="320" alt="Home, For you"> **Home — For you.** Account avatar, native timeline switcher, filled tab bar with Home in system blue. | <img src="screenshots/final/mobile/03-home-following.jpeg" width="320" alt="Home, Following"> **Home — Following.** The same switcher driving x.com's real timeline tab; the underline follows `aria-selected`. |
+| <img src="screenshots/final/mobile/02-account-menu.jpeg" width="320" alt="Account menu"> **Account menu.** Opened from the avatar: Profile, Bookmarks, Lists, Settings and privacy — HarmonyOS Symbols, native menu. | <img src="screenshots/final/mobile/04-explore.jpeg" width="320" alt="Explore"> **Explore.** Search lives *in* the header, not under a duplicated title. |
+| <img src="screenshots/final/mobile/05-explore-results.jpeg" width="320" alt="Search results"> **Search results.** Back arrow plus the live query and a clear button, exactly where the stock app puts them. | <img src="screenshots/final/mobile/06-notifications.jpeg" width="320" alt="Notifications"> **Notifications.** Centred title, single gear, and the native unread badge on the tab bar. |
+| <img src="screenshots/final/mobile/07-notification-settings.jpeg" width="320" alt="Notification settings"> **Notification settings.** A pushed page: back arrow, page name, no gear. | <img src="screenshots/final/mobile/08-messages.jpeg" width="320" alt="Messages"> **Messages.** Title + gear only; the pencil that used to sit here is gone (the FAB is the compose entry point). |
+| <img src="screenshots/final/mobile/09-profile.jpeg" width="320" alt="Profile"> **Profile.** Display name over `@handle`, settings gear, no back arrow on the tab root. | <img src="screenshots/final/mobile/10-settings.jpeg" width="320" alt="Settings"> **Settings.** Reached from that gear. |
+| <img src="screenshots/final/mobile/11-post-detail.jpeg" width="320" alt="Post detail"> **Post detail.** Native back plus a page name when a timeline item is opened. | <img src="screenshots/final/mobile/12-compose-sheet.jpeg" width="320" alt="Compose sheet"> **Compose sheet.** Cancel / New post / Post, counter, and the web composer hidden underneath. |
+
+### Foldable — 2388 x 2480 unfolded (955 vp, side rail)
+
+Same component tree, flipped by the 840 vp breakpoint: the bottom bar becomes a
+rail and the web content keeps the full width. This AVD is **signed out** (its
+session is device-local, see [audit doc §8.5](docs/HARMONY_GUIDELINE_AUDIT.md)),
+so the pages it can load are x.com's own login walls — the point of these frames
+is the shell.
+
+| | |
+| --- | --- |
+| <img src="screenshots/final/foldable/01-home-rail.jpeg" width="460" alt="Foldable home"> **Rail + native header.** Filled symbols, Home active in system blue, avatar and switcher centred in the header. | <img src="screenshots/final/foldable/02-account-menu.jpeg" width="460" alt="Foldable account menu"> **Account menu** on the wide layout (signed out: Create account / Settings and privacy). |
+| <img src="screenshots/final/foldable/03-home-following.jpeg" width="460" alt="Foldable Following"> **Timeline switch** works in the rail layout too. | <img src="screenshots/final/foldable/04-explore.jpeg" width="460" alt="Foldable Explore"> **Explore** on the wide layout — the header search spans the content column. |
+| <img src="screenshots/final/foldable/09-compose-sheet.jpeg" width="460" alt="Foldable compose sheet"> **Compose sheet** — native sheet with the system keyboard. | <img src="screenshots/final/foldable/10-signed-install.jpeg" width="460" alt="Signed HAP running"> **The signed HAP, installed and running** (see below). |
+
+Signed-out login walls on the same AVD, kept for completeness:
+[Notifications](screenshots/final/foldable/06-notifications.jpeg),
+[Messages](screenshots/final/foldable/07-messages.jpeg),
+[Profile](screenshots/final/foldable/08-profile.jpeg).
 
 ## Project layout (remade)
 - `AppScope/app.json5` — bundle `com.opentwit.web`
@@ -51,6 +81,9 @@ signed HAP running after install (that AVD is signed out; see the audit doc §8.
 - `entry/src/main/ets/common/Theme.ets` — font + theme tokens
 - `entry/src/main/resources/{base,dark,zh_CN}/element/*.json` — strings + start-window colour per qualifier; UI colours come from `sys.color.*`
 - `AppScope/resources/base/media/{layered_image.json,background.png,foreground.png,app_icon.png}` — layered app icon, generated by `scripts/make-icons.py`
+- `scripts/sign-hap.sh` — profile + HAP signing with the SDK's OpenHarmony test material, then verification (output lands in `dist/`, which is git-ignored; releases carry the artifact)
+- `screenshots/final/{mobile,foldable}/` — the device evidence shown above, captured with `hdc ... uitest screenCap`
+- `docs/HARMONY_GUIDELINE_AUDIT.md` — the audit log: findings, fixes, native-vs-web ownership table, device verification and the signing boundary
 - Old `services/` (`WebTimeline`, `UserApi`, …), `viewmodels/`, `components/TweetCard|Composer|LiveTweetList`, `pages/Home|Explore|Notify|Messages|Profile|Login|Detail|UserProfile`, `common/TokenStore|WebFallback|HarmonyCard` removed — dead native-mock stack
 
 ## Prerequisites
@@ -80,7 +113,11 @@ hvigorw assembleApp
 #   entry/build/default/outputs/default/entry-default-unsigned.hap
 #   build/outputs/default/OpenTwit-Web-default-unsigned.app
 ```
-Debug builds are unsigned on purpose (`signingConfigs: []`). For signed release, provision via DevEco Studio (File > Project Structure > Signing Configs); never commit `.p12`/`.cer`/profiles.
+Hvigorw output is unsigned on purpose (`signingConfigs: []`). For a signed
+HAP use `scripts/sign-hap.sh` (see [Signed build](#signed-build)); for an
+AppGallery release, provision with your own AGC material via DevEco Studio
+(File > Project Structure > Signing Configs) instead. Never commit
+`.p12`/`.cer`/profiles — `.gitignore` already blocks them.
 
 ## Emulator (phone, HarmonyOS 6.1.1 API 24)
 Image download via `Emulator -install` is geo-gated to the Chinese mainland since DevEco 6.1.0 Beta1. No proxy needed — locale/timezone exports are enough (the `export ...` trick from `Abhi-Flex1/OpenTwit@e87a9ee` README):
@@ -111,8 +148,12 @@ Verified 2026-09-21 on both AVDs (phone 377 vp + foldable 955 vp): install,
 launch, tab switching and tab sync, system Back (web history → Home tab →
 leave app), offline retry, light/dark theme, launcher icon, `zh_CN`
 localisation, bottom bar on phone and navigation rail on the wide device.
-Method, per-finding fixes and the screenshot names are in
-[docs/HARMONY_GUIDELINE_AUDIT.md](docs/HARMONY_GUIDELINE_AUDIT.md).
+Verified again 2026-09-22 against a live signed-in account: every tab and
+pushed page (see the phone gallery above), the native timeline switcher, the
+account menu, the compose sheet, and
+the signed HAP installing and launching on the foldable AVD. Method, per-finding
+fixes and what is native vs. web-owned are in
+[docs/HARMONY_GUIDELINE_AUDIT.md](docs/HARMONY_GUIDELINE_AUDIT.md) §8.
 
 ### App icons
 `scripts/make-icons.py` regenerates the layered icon set

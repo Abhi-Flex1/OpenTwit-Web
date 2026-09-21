@@ -384,11 +384,12 @@ session, so the screenshots in this section are of a live account.
    (`screenshots/final/mobile/01-home-for-you.jpeg`,
    `03-home-following.jpeg`).
 3. **Explore search moved into the header** instead of sitting under a title
-   (`04-explore.jpeg`, `05-explore-results.jpeg`), which also removed the
-   duplicated "Explore" title + field stack.
+   (`screenshots/final/mobile/04-explore.jpeg`,
+   `05-explore-results.jpeg`), which also removed the duplicated "Explore" title
+   + field stack.
 4. **Profile header follows the stock app**: display name over `@handle`, with
    the settings gear, and no back arrow on the Profile root
-   (`09-profile.jpeg`, `10-settings.jpeg`).
+   (`screenshots/final/mobile/09-profile.jpeg`, `10-settings.jpeg`).
 5. **`databaseAccess(true)`** on the `Web` component: ArkWeb gates its database
    APIs behind this flag and defaults them off, which a full web app should not
    rely on.
@@ -437,12 +438,16 @@ The "no conversations" report was reproduced and traced:
 Phone AVD (1320x2856, signed in as the account owner):
 `screenshots/final/mobile/` — home (For you), account menu, home (Following),
 explore, explore results, notifications, notification settings, messages,
-profile, settings.
+profile, settings, post detail, compose sheet. All twelve are embedded in the
+README's screenshot gallery.
 
 Foldable AVD (2388x2480, 955 vp, **signed out**): `screenshots/final/foldable/`
 — rail + native header, account menu (Create account / Settings and privacy),
 Following switch, explore, compose sheet, plus `10-signed-install.jpeg` which is
-the **signed** HAP running after install.
+the **signed** HAP running after install. The login-wall captures
+(`06-notifications`, `07-messages`, `08-profile`) are linked from the README for
+completeness; two early captures (`00-state`, `05-explore-results`) were dropped
+because they were duplicates of another frame and a black frame respectively.
 
 The foldable's own session could not be re-established: the web cookie jar lives
 outside the app sandbox, `hdc file send` and `shell cp` into the sandbox are
