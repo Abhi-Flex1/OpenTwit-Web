@@ -2,123 +2,123 @@
   "string": [
     {
       "name": "tab_home",
-      "value": "Home"
+      "value": "首页"
     },
     {
       "name": "tab_explore",
-      "value": "Explore"
+      "value": "探索"
     },
     {
       "name": "tab_notifications",
-      "value": "Notifications"
+      "value": "通知"
     },
     {
       "name": "tab_messages",
-      "value": "Messages"
+      "value": "私信"
     },
     {
       "name": "tab_profile",
-      "value": "Profile"
+      "value": "我"
     },
     {
       "name": "search_placeholder",
-      "value": "Search X"
+      "value": "搜索 X"
     },
     {
       "name": "menu_search",
-      "value": "Search"
+      "value": "搜索"
     },
     {
       "name": "menu_notification_settings",
-      "value": "Notification settings"
+      "value": "通知设置"
     },
     {
       "name": "menu_new_message",
-      "value": "New message"
+      "value": "新建消息"
     },
     {
       "name": "menu_edit_profile",
-      "value": "Edit profile"
+      "value": "编辑个人资料"
     },
     {
       "name": "menu_create_account",
-      "value": "Create account"
+      "value": "创建账号"
     },
     {
       "name": "menu_refresh",
-      "value": "Refresh"
+      "value": "刷新"
     },
     {
       "name": "menu_desktop_site",
-      "value": "Desktop site"
+      "value": "桌面版网站"
     },
     {
       "name": "menu_mobile_site",
-      "value": "Mobile site"
+      "value": "移动版网站"
     },
     {
       "name": "compose_title",
-      "value": "New post"
+      "value": "新帖子"
     },
     {
       "name": "compose_post",
-      "value": "Post"
+      "value": "发布"
     },
     {
       "name": "compose_cancel",
-      "value": "Cancel"
+      "value": "取消"
     },
     {
       "name": "compose_post_sent",
-      "value": "Post sent"
+      "value": "已发布"
     },
     {
       "name": "compose_post_missing",
-      "value": "Nothing to post yet"
+      "value": "还没有可发布的内容"
     },
     {
       "name": "vibrate_reason",
-      "value": "OpenTwit gives light tactile feedback when you switch tabs."
+      "value": "OpenTwit 在切换标签页时会提供轻微的触感反馈。"
     },
     {
       "name": "error_title",
-      "value": "Could not load X"
+      "value": "无法加载 X"
     },
     {
       "name": "error_message",
-      "value": "Check your connection and try again."
+      "value": "请检查网络连接后重试。"
     },
     {
       "name": "retry",
-      "value": "Retry"
+      "value": "重试"
     },
     {
       "name": "location_dialog_title",
-      "value": "Allow location access?"
+      "value": "允许访问位置信息？"
     },
     {
       "name": "location_dialog_message",
-      "value": "A web page on x.com wants to use your location. Allow it only if you want location-tagged posts."
+      "value": "x.com 上的网页想获取你的位置信息。仅当你需要发布带位置的帖子时才允许。"
     },
     {
       "name": "allow",
-      "value": "Allow"
+      "value": "允许"
     },
     {
       "name": "deny",
-      "value": "Don't allow"
+      "value": "不允许"
     },
     {
       "name": "file_selector_error",
-      "value": "Could not open the file picker."
+      "value": "无法打开文件选择器。"
     },
     {
       "name": "internet_reason",
-      "value": "OpenTwit loads full Twitter web (x.com) in-app."
+      "value": "OpenTwit 会在应用内加载完整的 Twitter 网页（x.com）。"
     },
     {
       "name": "location_reason",
-      "value": "OpenTwit web pages may request your location for location-tagged posts."
+      "value": "OpenTwit 中的网页可能为发布带位置的帖子而请求你的位置信息。"
     }
   ]
 }
