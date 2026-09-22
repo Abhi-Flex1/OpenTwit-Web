@@ -59,6 +59,10 @@ const NOTIFICATIONS = 'a[href="/notifications"],[data-testid="AppTabBar_Notifica
 const MESSAGES = 'a[href="/messages"],a[href="/i/chat"],'
   + '[data-testid="AppTabBar_DirectMessage_Link"],[data-testid="AppTabBar_Messages_Link"]';
 
+// "-1" is the load-bearing part of the contract: it means the page has not
+// published that entry yet, and the shell must keep the count it already has
+// rather than clearing the badge (which is what made badges drop out while
+// moving between tabs).
 const cases = [
   ['English accessible labels', {
     [NOTIFICATIONS]: [element({ attrs: { 'aria-label': 'Notifications (3 unread notifications)' }, text: 'Notifications' })],
@@ -72,18 +76,22 @@ const cases = [
     [NOTIFICATIONS]: [element({ attrs: { 'aria-label': 'Notifications' }, kids: [element({ text: '\n  4\n' })] })],
     [MESSAGES]: [element({ attrs: { 'aria-label': 'Messages' } })]
   }, '', '4/0'],
-  ['title prefix as the last resort', { [NOTIFICATIONS]: [], [MESSAGES]: [] }, '(7) Home / X', '7/0'],
-  ['signed out', { [NOTIFICATIONS]: [], [MESSAGES]: [] }, 'X. It’s what’s happening / X', '0/0'],
-  ['labels without a count', {
+  ['entries present but nothing unread', {
     [NOTIFICATIONS]: [element({ attrs: { 'aria-label': 'Notifications' }, text: 'Notifications' })],
     [MESSAGES]: [element({ attrs: { 'aria-label': 'Messages' }, text: 'Messages' })]
   }, '', '0/0'],
+  ['title prefix fills in for a missing notification entry', {
+    [NOTIFICATIONS]: [], [MESSAGES]: [element({ attrs: { 'aria-label': 'Messages' } })]
+  }, '(7) Home / X', '7/0'],
+  ['mid-load: nothing published yet', { [NOTIFICATIONS]: [], [MESSAGES]: [] }, '', '-1/-1'],
+  ['mid-load on a page with a stale title', { [NOTIFICATIONS]: [], [MESSAGES]: [] }, 'Home / X', '-1/-1'],
+  ['signed out', { [NOTIFICATIONS]: [], [MESSAGES]: [] }, 'X. It’s what’s happening / X', '-1/-1'],
   ['labelled entry wins over an unlabelled one', {
     [NOTIFICATIONS]: [
       element({ attrs: { 'aria-label': 'Home (New unread posts)' }, text: 'Home' }),
       element({ attrs: { 'aria-label': 'Notifications (9 unread notifications)' }, text: 'Notifications' })
     ],
-    [MESSAGES]: []
+    [MESSAGES]: [element({ attrs: { 'aria-label': 'Messages' } })]
   }, '', '9/0']
 ];
 

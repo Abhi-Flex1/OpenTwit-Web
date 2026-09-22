@@ -594,3 +594,107 @@ hdc -t 127.0.0.1:5555 fport tcp:9338 localabstract:webview_devtools_remote_<pid>
 curl -s http://127.0.0.1:9338/json          # CDP Runtime.evaluate on the live page
 codelinter -f json entry/src/main/ets       # [] — 0 findings
 ```
+
+## 10. Second reviewer round — badge stability, icon badge, drafts (2026-09-22)
+
+The reviewer came back after testing the build from §9. Four claims; three were
+right and are fixed here, one is X's own client and is answered rather than
+changed.
+
+### 10.1 "It works on Explore, but it's trippy and buggy when you move to Home" — correct, fixed
+
+Reproduced from the code path, then on the device. The unread script returned 0
+for *both* counts whenever it could not find the page's navigation entry, and an
+entry is missing for as long as a navigation or reload is in flight. The shell
+took that answer at face value, so moving between tabs cleared the badges and
+they only came back on the next 30 s tick — Explore happened to keep them
+because that route usually swaps timelines in place.
+
+Fix, in two halves:
+
+* the script now answers **-1 for "this page has not published that count yet"**
+  and 0 only when the entry is genuinely there with nothing unread, so the shell
+  can tell "nothing unread" from "no answer";
+* the shell keeps the last known count on -1 and re-asks every 1.2 s (six tries)
+  instead of blanking the badge and waiting half a minute.
+
+Evidence — the same action that used to clear it: counts injected, page reloaded
+with `location.reload()`, screen captured 1.2 s later. Before this pass that
+reload logged `launcher badge -> 0` and the badges disappeared; now the badge
+stays put (identical badge pixels in the before/during/after frames,
+`launcher badge -> 5` unchanged). `scripts/check-unread-counts.mjs` covers the
+new contract, including two "mid-load" cases (9/9 passing).
+
+Known trade-off: with no navigation entry at all — signed out, or a page that
+never hydrates — the last count is kept rather than zeroed. A restart starts
+from zero, and a signed-in page always has the entry, so the sticky case is only
+"signed out mid-session".
+
+### 10.2 "It has potential for app icon homescreen notification itself" — correct, now actually works
+
+§9 already handed the total to `notificationManager.setBadgeNumber`, and §9 also
+reported that the launcher drew nothing. That was not the launcher's fault:
+
+* `notificationManager.isNotificationEnabledSync()` returned **false** — the app
+  had never been granted notifications;
+* HarmonyOS counts the app-icon badge as a notification surface. Its own
+  permission dialog says so: *"通知提醒方式可能包括锁屏、横幅、角标、响铃、振动"* —
+  badge among lock screen, banner, ring and vibration;
+* after granting, the same build's `setBadgeNumber(5)` put a red **5** on the
+  OpenTwit icon (`screenshots/fixes-2026-09-22/04-icon-badge-after-permission.jpeg`).
+
+So the fix is the permission, not the badge call. The shell now asks **once, in
+context** — the first time there is actually something to badge, never on
+launch, never again after a decline (the answer is persisted) — and then polls
+for 30 s in case the user allows it from Settings instead. Declining costs only
+the launcher icon; the tab bar badges are independent of it. This is the one
+user-visible behaviour change in the pass, and it is the platform's model rather
+than a choice: without the grant, no app can badge its icon.
+
+### 10.3 "Only the messages is an issue, 'empty inbox' and Disconnected nonsense" — correct observation, not shell-owned
+
+Re-checked against §8.4: x.com **itself** redirects `/messages` to `/i/chat`,
+X's new Chat client, and that client's own screen is what reports an empty inbox
+and `Disconnected`. The shell loads `/messages` and lets x.com choose precisely
+so it follows whatever X serves next; it hides no conversation rows (the earlier
+signed-in capture found no conversation nodes in the page at all), and the state
+survived both `databaseAccess` and a stock iPhone Safari UA. It is X's realtime
+session failing to establish on this emulator's slow network, not chrome the
+shell drew or removed. There is no DM URL that bypasses XChat for an enrolled
+account, so there is nothing to route around; it needs a retest on a real device
+and a normal connection.
+
+What the pass *did* do here is stop the shell making that page worse: see 10.5.
+
+### 10.4 "Find a way to save messages in a draft … self contained locally, ArkData" — good idea, implemented
+
+The composer's text lived in `@State` only, so closing the sheet — or the app —
+lost it. It is now written to the same ArkData preferences store the shell
+already uses for the account handle and avatar, debounced 700 ms after the last
+keystroke and again on the way out, restored when the composer opens, and
+cleared when the post actually goes through.
+
+Evidence: typed `draft-survives-restart` into the sheet, `aa force-stop`, cold
+start, opened the sheet again — the text and the 22/280 counter are back
+(`screenshots/fixes-2026-09-22/05-draft-restored-after-kill.jpeg`).
+
+### 10.5 Also in this pass: the chrome observer no longer runs on every mutation
+
+`chromeScript` installed a `MutationObserver` that ran the full removal pass —
+~14 probes, `getBoundingClientRect` on each, then a document-wide scan for the
+account handle — on **every** DOM mutation. On a timeline that is a lot of
+forced layout; on the chat screen, which mutates continuously, it is the worst
+case, and it is the one page the reviewer says feels wrong. Re-runs are now
+paced to one per 250 ms (the first pass stays immediate, so first paint still
+gets no double chrome), and the handle lookup stops once the handle is known.
+
+### 10.6 "XChat, or a separate app for XChat" — out of scope, answered
+
+A web shell cannot make X's chat client connect, and shipping a second app for
+one of X's surfaces is a product decision rather than a fix. What the shell can
+do — land on the route X serves, keep its own chrome out of the way, and hand
+the user back a working session — it now does.
+
+Device evidence for this round: phone AVD 1320 x 2856 (HarmonyOS 6.1.1 / API 24),
+`hvigorw assembleHap` + `sign-hap.sh` + `hdc install -r`, `codelinter -f json
+entry/src/main/ets` → `[]`, `node scripts/check-unread-counts.mjs` → 9/9.
