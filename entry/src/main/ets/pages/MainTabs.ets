@@ -7,6 +7,7 @@ import { BusinessError } from '@kit.BasicServicesKit';
 import { notificationManager } from '@kit.NotificationKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { SymbolGlyphModifier } from '@kit.ArkUI';
+import { KeyCode } from '@kit.InputKit';
 import { vibrator } from '@kit.SensorServiceKit';
 import {
   BAR_HEIGHT, FONT_FAMILY, PROGRESS_HEIGHT, RAIL_WIDTH, RADIUS, S12, S16, S4, S8, TOUCH_TARGET,
@@ -245,6 +246,11 @@ struct MainTabs {
   // Short tick on tab change — HarmonyOS expects light tactile confirmation for
   // navigation, and a device without a motor simply rejects the request.
   private tick(): void {
+    // 2in1 desktops have no motor, and the SDK marks vibration as a capability
+    // that is not present on every device type.
+    if (!canIUse('SystemCapability.Sensors.MiscDevice')) {
+      return;
+    }
     try {
       vibrator.startVibration({ type: 'time', duration: 10 }, { id: 0, usage: 'unknown' })
         .catch((err: Error) => {
@@ -1013,6 +1019,40 @@ struct MainTabs {
     this.putPreference(NOTIFICATION_ASKED_KEY, true);
   }
 
+  // Desktop keyboards: Escape leaves the composer and Ctrl/Cmd+Enter posts —
+  // the two shortcuts every client of this kind has, and on a 2in1 they are
+  // faster than reaching for the sheet's buttons. Returns true when the key is
+  // consumed so it does not also reach the editor.
+  private composeKey(event: KeyEvent): boolean {
+    if (event.type !== KeyType.Down) {
+      return false;
+    }
+    if (event.keyCode === KeyCode.KEYCODE_ESCAPE) {
+      this.sheetOpen = false;
+      return true;
+    }
+    if (event.keyCode !== KeyCode.KEYCODE_ENTER) {
+      return false;
+    }
+    if (event.metaKey === 1 || MainTabs.ctrlDown(event)) {
+      this.postFromSheet();
+      return true;
+    }
+    return false;
+  }
+
+  private static ctrlDown(event: KeyEvent): boolean {
+    try {
+      // Optional on the type: it is absent on older devices and under a stylus.
+      if (event.getModifierKeyState === undefined) {
+        return false;
+      }
+      return event.getModifierKeyState(['Ctrl']);
+    } catch (err) {
+      return false;
+    }
+  }
+
   private async putPreference(key: string, value: preferences.ValueType): Promise<void> {
     try {
       const ctx: common.Context | undefined = this.getUIContext().getHostContext();
@@ -1174,6 +1214,9 @@ struct MainTabs {
     .width(TOUCH_TARGET)
     .height(TOUCH_TARGET)
     .justifyContent(FlexAlign.Center)
+    // Pointer devices (2in1 / tablet with a mouse) get the hover the phone
+    // never needed.
+    .hoverEffect(HoverEffect.Highlight)
     .accessibilityText($r('app.string.menu_account'))
     .accessibilityLevel('yes')
     .bindMenu(this.accountMenu)
@@ -1263,6 +1306,7 @@ struct MainTabs {
     .height('100%')
     .justifyContent(FlexAlign.Center)
     .padding({ left: S12, right: S12 })
+    .hoverEffect(HoverEffect.Highlight)
     .accessibilityText(label)
     .accessibilityLevel('yes')
     .onClick(() => {
@@ -1426,6 +1470,8 @@ struct MainTabs {
     .width(this.isWide ? RAIL_WIDTH : undefined)
     .height(this.isWide ? TOUCH_TARGET + S16 : undefined)
     .layoutWeight(this.isWide ? 0 : 1)
+    // Mouse hover, so the rail reads as a desktop navigation rail on 2in1.
+    .hoverEffect(HoverEffect.Highlight)
     .accessibilityText(this.tabLabel(index))
     .accessibilityDescription(this.tabLabel(index))
     .accessibilityLevel('yes')
@@ -1815,6 +1861,10 @@ struct MainTabs {
           .onChange(() => {
             this.scheduleDraftSave();
           })
+          // Pre-IME: the editor would otherwise swallow Enter (it is a newline
+          // there), so Ctrl/Cmd+Enter has to be handled before the input method
+          // and the editor ever see the key.
+          .onKeyPreIme((event: KeyEvent) => this.composeKey(event))
           .defaultFocus(true)
       }
       .width('100%')
@@ -1827,6 +1877,8 @@ struct MainTabs {
     .borderRadius({ topLeft: RADIUS, topRight: RADIUS })
     .clip(true)
     .backgroundColor($r('sys.color.ohos_id_color_background'))
+    // Escape works from anywhere in the sheet, not only from the editor.
+    .onKeyEvent((event: KeyEvent) => this.composeKey(event))
   }
 
   build() {

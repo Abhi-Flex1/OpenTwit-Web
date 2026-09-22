@@ -698,3 +698,84 @@ the user back a working session — it now does.
 Device evidence for this round: phone AVD 1320 x 2856 (HarmonyOS 6.1.1 / API 24),
 `hvigorw assembleHap` + `sign-hap.sh` + `hdc install -r`, `codelinter -f json
 entry/src/main/ets` → `[]`, `node scripts/check-unread-counts.mjs` → 9/9.
+
+## 11. HarmonyOS PC (2in1) + foldable re-check (2026-09-22)
+
+Asked for directly: adapt the app properly for HarmonyOS PC, and check the
+foldable UI. The PC half was done on a real 2in1 image, not by reasoning.
+
+### 11.1 Getting a PC image without the mainland-China gate
+
+The same `export` trick that the sibling project's README documents
+(`Abhi-Flex1/OpenTwit@e87a9ee`, "Emulator (phone, HarmonyOS 6.1.1)") works for
+the 2in1 catalogue entry — no proxy:
+
+```bash
+export PATH="$HOME/Developer/command-line-tools/bin:$PATH"
+export LANG=zh_CN.UTF-8 LC_ALL=zh_CN.UTF-8 TZ=Asia/Shanghai
+Emulator -license accept
+Emulator -imageList -deviceType 2in1            # 6.1.1(24), Release, 2.5 GB
+Emulator -install -deviceType 2in1 -osVersion "HarmonyOS 6.1.1(24)" -force
+Emulator -create OpenTwitPC -deviceType 2in1 -osVersion "HarmonyOS 6.1.1(24)"
+Emulator -start OpenTwitPC                      # holds the terminal, like the phone AVD
+```
+
+Result: `~/Library/Huawei/Sdk/system-image/HarmonyOS-6.1.1/pc_all_arm/`, an AVD
+whose display is a MateBook-shaped **3120 x 2080 @ 304 dpi = 1642 x 1095 vp**.
+`hdc` finds it as `127.0.0.1:5559`. The phone and foldable AVDs already running
+were left alone; three at once is more RAM than this host wants, so the phone was
+stopped for the PC run and restarted for the final phone check.
+
+### 11.2 What "properly adapted" turned out to mean
+
+Findings on the PC, in the order they showed up:
+
+| # | Finding | Fix |
+| --- | --- | --- |
+| 1 | The HAP would not be offered to a PC at all: the module declared `default` + `tablet` | `deviceTypes` gains `2in1`, with a 360 x 480 vp window floor and `supportWindowMode: fullscreen/split/floating` |
+| 2 | The first launch opened a **phone-shaped window** (about 360 vp wide — bottom bar, stretched mobile page) in the middle of a 1642 vp desktop | On a desktop display the shell now sizes the window to 85% x 90% of the screen, capped at 1440 x 960 vp, and **centres** it; the one-shot flag lives in preferences, so after that the size belongs to the user and the window manager |
+| 3 | Resizing without moving left the window hanging over the screen edge (measured: window at x=515 with the web view still reaching x=3120) | `moveWindowTo` after `resize`, both derived from the same display measurement |
+| 4 | `display.getDefaultDisplaySync()` answered **1260 x 2719 px** on one launch and 3120 x 2080 on the next — sized from the first answer the window came out tall and phone-shaped | The sizing works in vp off `width / (densityDPI / 160)`, and bails out entirely if the display reports under 1000 vp wide, so a bad early read costs nothing and does not spend the one shot |
+| 5 | `getWindowLimits()` looked like the screen but is the platform ceiling (2880 vp here) — using it produced a 4378 x 4651 px window | The display is the reference; the limits are only mentioned in the comment so the next reader does not fall for it |
+| 6 | Nothing responded to a mouse | `hoverEffect(HoverEffect.Highlight)` on the rail items, the Home switcher and the header avatar |
+| 7 | No keyboard support in the composer | `Esc` leaves the composer, `Ctrl`/`Cmd`+`Enter` posts |
+| 8 | The app is a phone app on a PC in one more way: it buzzed | `tick()` is gated behind `canIUse('SystemCapability.Sensors.MiscDevice')`, which is also what the SDK's own syscap warning is about |
+
+The keyboard work needed a second pass, and the device is what caught it:
+
+* wired to `onKeyEvent`, **`Enter` never arrived** — the focused `TextArea`
+  consumes the press for its newline, and only the release reached the shell
+  (`type=1` in the log, twice: once through the sheet root, once through the
+  editor). On a real keyboard that shortcut would simply never have fired.
+* moved to `onKeyPreIme`, which ArkUI documents as running *before* the input
+  method and the editor, and the same injected keys arrive as a press with the
+  modifier held: `composeKey code=2054 type=0 ctrl=true`, which is the submit
+  branch.
+
+### 11.3 Foldable and phone re-check on the same build
+
+Rail layout is one component tree flipped at 840 vp, so all three were checked
+with the same HAP:
+
+| Form factor | Display | Result |
+| --- | --- | --- |
+| Phone | 1320 x 2856 = 377 vp | Bottom bar, native header, FAB (`screenshots/fixes-2026-09-22/09-phone-bottom-bar.jpeg`) |
+| Foldable unfolded | 2388 x 2480 = 955 vp | Navigation rail + header, page in the system language, FAB (`…/08-foldable-rail-955vp.jpeg`) |
+| 2in1 (PC) | 3120 x 2080 = 1642 vp | Window → rail + header, FAB (`…/06-pc-window-centred.jpeg`, `…/07-pc-rail-landscape.jpeg`) |
+
+### 11.4 Boundaries
+
+* **Hover is set, not photographed.** A static `uitest screenCap` cannot show a
+  pointer state; the attribute is on the three components and the build is clean.
+* **The PC emulator has no physical keyboard**, so its soft keyboard (Celia) had
+  to be force-stopped for the key events to reach the app, and the consent window
+  it opens has focus of its own — that is emulator plumbing, not the app. On a
+  real 2in1 the soft keyboard stays out of the way when a hardware keyboard is
+  attached, which is the case the shortcuts are for.
+* **The composer's submit path was exercised with an empty draft** (the shortcut
+  branch ran; `postFromSheet` returns early on empty text, by design). Typing a
+  draft through `uitest uiInput inputText` did not land in the PC emulator's
+  `TextArea` once the IME had been stopped, so the visual end of that path is
+  carried by the earlier signed-in compose-sheet verification.
+* The 2in1 AVD is signed out, like the phone one after its reinstall: the frames
+  show the shell and x.com's own logged-out pages.

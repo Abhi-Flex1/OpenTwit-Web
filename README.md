@@ -20,8 +20,9 @@ Previous native-API mock (8 starter posts via fxtwitter/syndication) was **repla
 - **Web hardening**: JavaScript + DOM storage on, `mixedMode(Compatible)`, `fileAccess(false)`, `CacheMode.Default`, `WebDarkMode.Auto`, zoom/overview on, autoplay gesture off, custom UA `OpenTwit-Web/1.0 HarmonyOS`
 - **Resilience**: native offline card with Retry on `onErrorReceive`, automatic render-process recovery on `onRenderExited`
 - **System language**: every shell string comes from `app.string.*` with `base` (English), `zh_CN` and `ar` qualifiers, and the layout mirrors for right-to-left from the system setting alone (ArkUI `Direction.Auto`) — a phone set to Arabic gets an Arabic shell *and* an Arabic x.com inside it. Adding another language is one more resource directory, no code change
+- **HarmonyOS PC (2in1)**: installs and runs as a free-form desktop window (the ability declares `2in1`, a 360 x 480 vp floor and full-screen/split/floating support). On a desktop display the first launch sizes and centres the window like a desktop app instead of keeping the phone-shaped default, the wide layout is the navigation rail, and anything that needs a motor or a touch screen — the haptic tick — is skipped through `canIUse`. Pointer devices get hover on the rail, the Home switcher and the avatar, and a keyboard gets `Esc` to leave the composer and `Ctrl`/`Cmd`+`Enter` to post (handled pre-IME, so the editor's newline does not eat it)
 - **HarmonyOS compliance**: layered app icon, system colour resources (real light/dark), `app.string.*` localisation (en + zh_CN + ar, RTL), native back navigation, geolocation consent dialog, system photo picker for uploads — see [docs/HARMONY_GUIDELINE_AUDIT.md](docs/HARMONY_GUIDELINE_AUDIT.md)
-- Phone / tablet, Stage model only, API 24
+- Phone / tablet / foldable / 2in1, Stage model only, API 24
 
 ## Signed build
 
@@ -88,6 +89,13 @@ reports, captured for a reviewer's two asks (system languages, live badges):
 | <img src="screenshots/fixes-2026-09-22/03-follows-system-language.jpeg" width="320" alt="Chinese, follows the system"> **Still follows the system.** Same build, phone left on zh-Hans: shell and page are Chinese again. | |
 | <img src="screenshots/fixes-2026-09-22/04-icon-badge-after-permission.jpeg" width="320" alt="Icon badge"> **App-icon badge.** Once notifications are allowed — which is where HarmonyOS files the icon badge — the launcher icon carries the unread total. | <img src="screenshots/fixes-2026-09-22/05-draft-restored-after-kill.jpeg" width="320" alt="Draft restored"> **Draft restored.** Composer text survives the sheet closing and the app being force-stopped. |
 
+### HarmonyOS PC and the other layouts — 2026-09-22
+
+| | |
+| --- | --- |
+| <img src="screenshots/fixes-2026-09-22/06-pc-window-centred.jpeg" width="420" alt="PC window"> **2in1, first launch.** A MateBook-shaped 2in1 AVD (3120 x 2080, 1642 x 1095 vp): the ability installs, opens a free-form window, and the shell sizes and centres it like a desktop app rather than keeping the phone-shaped default. | <img src="screenshots/fixes-2026-09-22/07-pc-rail-landscape.jpeg" width="420" alt="PC rail"> **2in1, rail.** Same build, window resized by the window manager: the bottom bar is a navigation rail, the native header stays, the composer FAB sits in the corner. |
+| <img src="screenshots/fixes-2026-09-22/08-foldable-rail-955vp.jpeg" width="320" alt="Foldable rail"> **Foldable, 955 vp unfolded.** The same wide layout on the foldable AVD, shell and page in the system language. | <img src="screenshots/fixes-2026-09-22/09-phone-bottom-bar.jpeg" width="320" alt="Phone bottom bar"> **Phone, 377 vp.** Below the 840 vp breakpoint the bar is the bottom bar again — one component tree, three form factors. |
+
 ## Project layout (remade)
 - `AppScope/app.json5` — bundle `com.opentwit.web`
 - `entry/src/main/ets/entryability/EntryAbility.ets` — loads `pages/MainTabs`
@@ -150,6 +158,10 @@ Emulator -create OpenTwitPhone -deviceType Phone -osVersion "HarmonyOS 6.1.1(24)
 # wide-layout AVD used for the tablet/foldable check (955 vp unfolded):
 Emulator -create OpenTwitWide2 -deviceType Foldable -osVersion "HarmonyOS 6.1.1(24)" \
   -screen "2388 2480 400 8.0" "2388 2480 400 8.0"
+# PC (2in1) AVD — same trick, MateBook-shaped display 3120x2080 @ 304 dpi
+# (1642 x 1095 vp), which is what the desktop layout and the window sizing were
+# verified against:
+Emulator -create OpenTwitPC -deviceType 2in1 -osVersion "HarmonyOS 6.1.1(24)"
 ln -s ~/Developer/command-line-tools/sdk ~/Developer/sdk   # CLI-tools layout fix so Emulator UI finds hdc
 Emulator -start OpenTwitPhone   # run it in a shell that STAYS OPEN: a detached
                                 # "nohup ... &" child is killed with its session
