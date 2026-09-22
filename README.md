@@ -26,7 +26,8 @@ Previous native-API mock (8 starter posts via fxtwitter/syndication) was **repla
 
 ## Signed build
 
-`dist/OpenTwit-Web-1.0.0-signed.hap` is built by `scripts/sign-hap.sh`, which
+`dist/OpenTwit-Web-<versionName>-signed.hap` (currently `1.1.0`) is built by
+`scripts/sign-hap.sh`, which
 signs the assembled HAP with the OpenHarmony test signing material that ships in
 the SDK (`toolchains/lib`). It installs and runs on an emulator image that trusts
 the OpenHarmony test root — verified on the foldable AVD. Retail HarmonyOS
@@ -38,8 +39,8 @@ commands per step are in
 
 ```bash
 ohpm install && hvigorw assembleHap --no-daemon   # produces the unsigned HAP
-./scripts/sign-hap.sh                             # -> dist/OpenTwit-Web-1.0.0-signed.hap
-hdc install -r dist/OpenTwit-Web-1.0.0-signed.hap # uninstall any unsigned build first
+./scripts/sign-hap.sh                             # -> dist/OpenTwit-Web-<version>-signed.hap
+hdc install -r dist/OpenTwit-Web-1.1.0-signed.hap # uninstall any unsigned build first
 ```
 
 ## Screenshots

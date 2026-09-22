@@ -472,6 +472,8 @@ material (`toolchains/lib/OpenHarmony.p12`, `OpenHarmonyProfileRelease.pem`,
 5. verifies with `verify-app` ("Verify success").
 
 Result: `dist/OpenTwit-Web-1.0.0-signed.hap` (SHA-256 in the `.sha256` file).
+Since 1.1.0 the script derives that name from `AppScope/app.json5` and writes the
+checksum itself, so the artifact always carries the app's own version.
 It was installed **for real** on the foldable AVD — after uninstalling the
 unsigned build, because a bundle cannot switch signing identities — and it
 starts and runs (`screenshots/final/foldable/10-signed-install.jpeg`).
