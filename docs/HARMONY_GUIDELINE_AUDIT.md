@@ -779,3 +779,64 @@ with the same HAP:
   carried by the earlier signed-in compose-sheet verification.
 * The 2in1 AVD is signed out, like the phone one after its reinstall: the frames
   show the shell and x.com's own logged-out pages.
+
+## 12. Second pass the same day — page chrome the shell had left behind, and a lie about being offline
+
+Date: 2026-09-22 (afternoon). Trigger: the owner relayed user feedback — the
+Messages tab showed "empty inbox" and "Disconnected nonsense", and the Home
+timeline had a stray X logo floating over it — plus the PC adaptation task.
+Every finding below was reproduced on the running AVDs (foldable
+`127.0.0.1:5557`, 2in1 `127.0.0.1:5559`) through ArkWeb DevTools before a line
+changed.
+
+### 12.1 Findings and fixes
+
+| # | Finding | Evidence it was real | Fix |
+| --- | --- | --- | --- |
+| 1 | x.com's navigation column was **only half removed**. The stylesheet deleted `nav[aria-label="Primary"]`, but the column that holds it is a full-height `header[role="banner"]`, and the removal pass only matched header *rows* (`height < 160`). The column stayed with its X logo and its 150 px of empty width. | Layout dump on the foldable, at `/home`: `header role=banner [0,0,150,12501]` still laid out. On Home that is the stray logo over the timeline; on Messages it is a **second navigation rail** next to the shell's own. | A banner that spans the viewport height at the left edge is a nav column, not a header row: `height ≥ 200 && width ≤ 360 && left ≤ 8` now removes it, on every route (`WebChrome.chromeScript`). |
+| 2 | Removing the page's search *field* left its **pill** behind — an empty rounded rectangle under the native search bar on Explore. | Screenshot of Explore before the fix; the field was `display:none` while its ancestors were still `[17,11,510,40]`. | The row goes with the field: from the field, walk up while the ancestor is still search-row shaped (`200 ≤ width ≤ 620`, `height ≤ 90`, no `[role="tablist"]` inside) and hide the outermost one. |
+| 3 | **`navigator.onLine` was false while the connection worked.** x.com believed it: `/i/chat` answered `Chat · Disconnected` and `Empty inbox`, with no conversations at all. | `navigator.onLine: false` on **both** AVDs while `navigator.connection` said `4g`, requests succeeded, and pages rendered. With the flag patched to `true` before page scripts ran, the same page loaded the real inbox (`Living In Harmony · 15m`, `MortCodesWeb · 26m`, `Sigma Group Chat · 2h`, …) — the "nonsense" was the shell's flag, not X's product. | `ONLINE_PATCH` is injected with `runJavaScriptOnDocumentStart`, so the flag is right before any page script reads it. The shell still corrects it downwards (`window.__otOnline = false`) when a main frame really fails, so a genuine offline state is not hidden from the page. |
+| 4 | **Popups blocked the renderer.** `onWindowNew` was not implemented, and ArkWeb blocks the render process until the event is answered — so x.com's `target=_blank` flows (the Google and Apple sign-in hand-offs, outbound links) looked like dead buttons. | The sign-in page's own copy for that link ("opens in a new tab"); the event has no default handler in the shell. | `onWindowNew` answers `setWebController(null)` (no second window) and loads the target in the shell's single WebView. |
+| 5 | On a 2in1 the shell asked x.com for the **mobile web app** while sitting in a 1642 vp desktop window — a mismatch the site acts on. | Fingerprint read on the 2in1: mobile UA, 1019 x 641 CSS viewport. | `2in1` now uses the desktop user agent (the same rule the e-mail sign-up flow already needed), phones/tablets/foldables keep the mobile web app. |
+
+### 12.2 What was re-verified on the device after the fixes
+
+| Check | Result |
+| --- | --- |
+| Messages tab, foldable | One rail, `Chat` inbox with real conversations, no `Disconnected`, no `Empty inbox` (`screenshots/fixes-2026-09-22/11-chat-inbox-online.jpeg`) |
+| Home, foldable | Timeline fills the width, no leftover X logo column (`…/12-foldable-home-no-x-column.jpeg`) |
+| Explore, foldable | Native search bar, then the page's own news/trends tabs — no ghost pill (`…/13-explore-ghost-search-gone.jpeg`) |
+| Badge stability | `私信` held `3` while moving Home → Notifications → Home; the count only clears on the tab it belongs to |
+| Draft (ArkData) | Typed `Draft persistence check 42`, closed the sheet, reopened (26 / 280 restored), force-stopped the app, reopened again — still restored (`…/15-draft-after-restart.jpeg`); the test draft was then cleared |
+| 2in1 | Window keeps its free-form chrome and rail, native header intact, page now served as a desktop browser (`…/14-pc-desktop-user-agent.jpeg`) |
+
+### 12.3 Boundaries and what remains open
+
+* **Login limit is X-side.** While this pass ran, the owner attempted to sign the
+  2in1 AVD in and X answered "we've temporarily limited your login" for two
+  accounts, so the 2in1 stays signed out and only its signed-out surfaces were
+  verified. Two things about the emulator make that limit more likely than on a
+  real device, and neither is app code: the image reports `Asia/Shanghai` +
+  `zh-Hans` regardless of where the host is, and repeated reinstalls give X a
+  fresh browser profile each time. `param set persist.global.language` /
+  `persist.time.timezone` are permission-denied on this image (`errNum 1001`),
+  so the language/region/timezone can only be changed through the emulator's own
+  Settings app.
+* **Arabic/RTL was not re-photographed this pass.** The `ar` resource set is
+  complete (38/38 keys, no key falling back to English apart from the numeric
+  counter), and the shell's own labels demonstrably follow the system language —
+  the foldable, whose image is `zh-Hans`, renders `首页 / 探索 / 通知 / 私信 / 我`
+  while the 2in1 renders `Home / Explore / Notifications / Messages / Profile`
+  from the same HAP. Switching the AVD to Arabic needs the Settings app (see
+  above), so the Arabic mirroring frames from the earlier pass still stand.
+* **Hover is still set, not photographed** (a static capture cannot show a
+  pointer state), and the 2in1's narrow-window bottom bar was not photographed
+  this pass: `aa start --ww/--wh` is not honoured on this image, so the window
+  could not be resized from the shell. The breakpoint itself is the same
+  component tree that the phone (377 vp, bottom bar) and foldable (955 vp, rail)
+  frames exercise.
+* **Google/Apple sign-in inside a WebView is still Google's call.** The
+  new-window fix makes the link respond instead of blocking the page; Google
+  itself refuses embedded browsers for OAuth, which the user sees as Google's own
+  "this browser or app may not be secure" page. E-mail + password is the path
+  that completes inside the shell.

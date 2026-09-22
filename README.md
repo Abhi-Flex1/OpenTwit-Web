@@ -96,6 +96,15 @@ reports, captured for a reviewer's two asks (system languages, live badges):
 | <img src="screenshots/fixes-2026-09-22/06-pc-window-centred.jpeg" width="420" alt="PC window"> **2in1, first launch.** A MateBook-shaped 2in1 AVD (3120 x 2080, 1642 x 1095 vp): the ability installs, opens a free-form window, and the shell sizes and centres it like a desktop app rather than keeping the phone-shaped default. | <img src="screenshots/fixes-2026-09-22/07-pc-rail-landscape.jpeg" width="420" alt="PC rail"> **2in1, rail.** Same build, window resized by the window manager: the bottom bar is a navigation rail, the native header stays, the composer FAB sits in the corner. |
 | <img src="screenshots/fixes-2026-09-22/08-foldable-rail-955vp.jpeg" width="320" alt="Foldable rail"> **Foldable, 955 vp unfolded.** The same wide layout on the foldable AVD, shell and page in the system language. | <img src="screenshots/fixes-2026-09-22/09-phone-bottom-bar.jpeg" width="320" alt="Phone bottom bar"> **Phone, 377 vp.** Below the 840 vp breakpoint the bar is the bottom bar again — one component tree, three form factors. |
 
+### x.com chrome left in the page, and the offline lie — 2026-09-22, second pass
+
+| | |
+| --- | --- |
+| <img src="screenshots/fixes-2026-09-22/10-messages-before-double-nav.jpeg" width="320" alt="Messages before"> **Before.** Messages carried two navigations at once: the shell's rail *and* x.com's own column, whose inner nav the stylesheet removed but whose X logo and empty width stayed — and the Chat client answered `Disconnected / Empty inbox`. | <img src="screenshots/fixes-2026-09-22/11-chat-inbox-online.jpeg" width="320" alt="Messages after"> **After.** One rail, and the real conversation list: the shell was reporting `navigator.onLine = false` to the page (see §12 of the audit log), which is exactly why the Chat client refused to load an inbox. |
+| <img src="screenshots/fixes-2026-09-22/12-foldable-home-no-x-column.jpeg" width="320" alt="Home without the leftover column"> **Home.** The same full-height column is what left a stray X logo floating over the timeline; the shell now takes the column with the nav inside it. | <img src="screenshots/fixes-2026-09-22/13-explore-ghost-search-gone.jpeg" width="320" alt="Explore"> **Explore.** The page's own search row goes with its search field, so no empty rounded pill is left under the native search bar. |
+| <img src="screenshots/fixes-2026-09-22/14-pc-desktop-user-agent.jpeg" width="420" alt="PC with the desktop user agent"> **2in1, desktop user agent.** On a 2in1 the shell now asks x.com for the desktop web app instead of presenting a phone user agent inside a 1000+ vp window. | <img src="screenshots/fixes-2026-09-22/15-draft-after-restart.jpeg" width="320" alt="Draft after a restart"> **Draft, re-verified.** Typed text survives the sheet closing *and* a force-stop, on the current build. |
+
+
 ## Project layout (remade)
 - `AppScope/app.json5` — bundle `com.opentwit.web`
 - `entry/src/main/ets/entryability/EntryAbility.ets` — loads `pages/MainTabs`
