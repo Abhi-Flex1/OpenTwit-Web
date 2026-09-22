@@ -3,6 +3,8 @@ import mediaquery from '@ohos.mediaquery';
 import { preferences } from '@kit.ArkData';
 import { photoAccessHelper } from '@kit.MediaLibraryKit';
 import { abilityAccessCtrl, common, PermissionRequestResult, Permissions } from '@kit.AbilityKit';
+import { BusinessError } from '@kit.BasicServicesKit';
+import { notificationManager } from '@kit.NotificationKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { SymbolGlyphModifier } from '@kit.ArkUI';
 import { vibrator } from '@kit.SensorServiceKit';
@@ -20,7 +22,7 @@ import {
 import {
   OWN_HANDLE_SCRIPT, chromeScript, chromeFlagScript, scrollToTopScript,
   CLICK_POST_BUTTON_SCRIPT, PROFILE_BOOTSTRAP_SCRIPT, fillComposerScript,
-  HOME_TAB_SCRIPT, selectHomeTabScript, AVATAR_SCRIPT
+  HOME_TAB_SCRIPT, selectHomeTabScript, AVATAR_SCRIPT, UNREAD_COUNTS_SCRIPT
 } from '../common/WebChrome';
 
 // OpenTwit-Web: the real x.com web app inside a fully native HarmonyOS shell.
@@ -47,6 +49,10 @@ const LOCATION_PERMISSIONS: Permissions[] = ['ohos.permission.LOCATION'];
 const FIRST_LOAD_TIMEOUT_MS: number = 15000;
 // The page's title and history only settle a moment after it navigates.
 const PAGE_STATE_DELAY_MS: number = 700;
+// How often the shell re-reads the unread counters from the page. x.com counts
+// arrive over its own streaming connection, so a poll is what keeps the tab
+// badges and the launcher badge in step with the account.
+const BADGE_REFRESH_MS: number = 30000;
 
 // Bridge exposed to the page as window.otNative. x.com is a single-page app, so
 // its navigations never fire the Web component's load callbacks; the injected
@@ -98,9 +104,11 @@ struct MainTabs {
   // web history to go back to. The shell draws the header for every page, so
   // these are what the native title bar shows.
   @State refreshing: boolean = false;
-  // Unread notifications, read from the page title ("(3) Home / X"). Shown as a
-  // native badge so the count does not depend on the web UI being on screen.
-  @State unreadCount: number = 0;
+  // Unread items, read from the page's own navigation entries. Both the tab bar
+  // and the launcher icon show them, so the count does not depend on the web UI
+  // being on screen.
+  @State unreadNotifications: number = 0;
+  @State unreadMessages: number = 0;
   @State pageTitle: string = '';
   @State canGoBack: boolean = false;
   private controller: web_webview.WebviewController = new web_webview.WebviewController();
@@ -108,6 +116,10 @@ struct MainTabs {
   private wideListener: mediaquery.MediaQueryListener | undefined = undefined;
   private bridge: PageBridge = new PageBridge();
   private firstLoadTimer: number = -1;
+  private badgeTimer: number = -1;
+  // Last count handed to the launcher, so the shell only calls out when it
+  // actually changes.
+  private badgeShown: number = -1;
 
   async aboutToAppear(): Promise<void> {
     this.bridge.setHandler((url: string) => {
@@ -118,6 +130,7 @@ struct MainTabs {
     });
     this.applyBreakpoints();
     this.armFirstLoadTimeout();
+    this.armBadgeRefresh();
     try {
       const ctx: common.Context | undefined = this.getUIContext().getHostContext();
       if (ctx !== undefined) {
@@ -141,6 +154,10 @@ struct MainTabs {
       clearTimeout(this.firstLoadTimer);
       this.firstLoadTimer = -1;
     }
+    if (this.badgeTimer !== -1) {
+      clearInterval(this.badgeTimer);
+      this.badgeTimer = -1;
+    }
     if (this.wideListener !== undefined) {
       try {
         this.wideListener.off('change');
@@ -148,6 +165,13 @@ struct MainTabs {
       }
       this.wideListener = undefined;
     }
+  }
+
+  // Coming back to the app is the moment the counts are most likely to be stale
+  // (the page kept running in the background), so re-read them here as well as
+  // on the timer.
+  onPageShow(): void {
+    this.refreshBadges();
   }
 
   // A page that never finishes loading must not leave the first-load spinner up
@@ -595,24 +619,77 @@ struct MainTabs {
     }
   }
 
-  // x.com prefixes the unread count: "(3) Home / X".
-  private static unreadCountOf(title: string): number {
-    if (title.length < 3 || title.charAt(0) !== '(') {
+  // Unread counters, straight off the page's own navigation entries. The page
+  // is the only thing that knows the account's counts, and it already publishes
+  // them for its own (hidden) tab row — see UNREAD_COUNTS_SCRIPT.
+  private refreshBadges(): void {
+    try {
+      this.controller.runJavaScript(UNREAD_COUNTS_SCRIPT).then((raw: string) => {
+        const counts: string = MainTabs.unquote(raw);
+        const cut: number = counts.indexOf('/');
+        if (cut <= 0) {
+          return;
+        }
+        const notifications: number = Number.parseInt(counts.substring(0, cut), 10);
+        const messages: number = Number.parseInt(counts.substring(cut + 1), 10);
+        if (!Number.isNaN(notifications)) {
+          this.unreadNotifications = notifications;
+        }
+        if (!Number.isNaN(messages)) {
+          this.unreadMessages = messages;
+        }
+        this.syncLauncherBadge();
+      });
+    } catch (err) {
+    }
+  }
+
+  // Keep the launcher icon's own badge in step with what the tab bar shows, so
+  // the count is visible without opening the app (HarmonyOS draws the badge on
+  // the desktop icon or the folder the icon sits in).
+  private syncLauncherBadge(): void {
+    const total: number = this.unreadNotifications + this.unreadMessages;
+    if (total === this.badgeShown) {
+      return;
+    }
+    this.badgeShown = total;
+    hilog.info(DOMAIN, TAG, 'launcher badge -> %{public}d', total);
+    try {
+      notificationManager.setBadgeNumber(total)
+        .then(() => {
+          hilog.info(DOMAIN, TAG, 'launcher badge accepted: %{public}d', total);
+        })
+        .catch((err: BusinessError) => {
+          hilog.warn(DOMAIN, TAG, 'launcher badge rejected: %{public}d %{public}s', err.code, err.message);
+        });
+    } catch (err) {
+      hilog.warn(DOMAIN, TAG, 'launcher badge unavailable: %{public}s', JSON.stringify(err));
+    }
+  }
+
+  private armBadgeRefresh(): void {
+    if (this.badgeTimer !== -1) {
+      clearInterval(this.badgeTimer);
+    }
+    this.badgeTimer = setInterval(() => {
+      this.refreshBadges();
+    }, BADGE_REFRESH_MS);
+  }
+
+  // Badge for a tab bar item: the count lives on Notifications and Messages,
+  // and clears while that tab is the one on screen — the same thing the stock
+  // app does when you open the tab and read it.
+  private badgeCount(index: number): number {
+    if (index === this.currentIndex) {
       return 0;
     }
-    const close: number = title.indexOf(')');
-    if (close < 2 || close > 5) {
-      return 0;
+    if (index === 2) {
+      return this.unreadNotifications;
     }
-    let digits: string = '';
-    for (let i: number = 1; i < close; i++) {
-      const ch: string = title.charAt(i);
-      if (ch < '0' || ch > '9') {
-        return 0;
-      }
-      digits += ch;
+    if (index === 3) {
+      return this.unreadMessages;
     }
-    return digits === '' ? 0 : Number.parseInt(digits, 10);
+    return 0;
   }
 
   private static stripSiteSuffix(raw: string): string {
@@ -639,7 +716,6 @@ struct MainTabs {
       this.controller.runJavaScript('document.title').then((raw: string) => {
         const title: string = MainTabs.unquote(raw);
         this.pageTitle = MainTabs.stripSiteSuffix(title);
-        this.unreadCount = MainTabs.unreadCountOf(title);
       });
     } catch (err) {
     }
@@ -691,6 +767,7 @@ struct MainTabs {
   private schedulePageStateRead(): void {
     setTimeout(() => {
       this.readPageState();
+      this.refreshBadges();
     }, PAGE_STATE_DELAY_MS);
   }
 
@@ -1155,7 +1232,7 @@ struct MainTabs {
   navItem(index: number) {
     Column({ space: S4 }) {
       Badge({
-        count: (index === 2 && this.currentIndex !== 2) ? this.unreadCount : 0,
+        count: this.badgeCount(index),
         position: BadgePosition.RightTop,
         style: { fontSize: 10, badgeSize: 16 }
       }) {

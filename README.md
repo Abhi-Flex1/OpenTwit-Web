@@ -7,7 +7,8 @@ Previous native-API mock (8 starter posts via fxtwitter/syndication) was **repla
 
 ## Features
 - **Full web Twitter**: `https://x.com/home`, `/explore`, `/notifications`, `/messages`, `/settings/profile` — login via web cookies, no API key
-- **Native shell**: linear progress + first-load spinner, bottom bar (Home/Explore/Notifications/Messages/Profile) with the filled HarmonyOS Symbols `house_fill`, `compass_circle_fill`, `bell_fill`, `envelope_fill`, `person_fill` — the same filled glyph in both states, with system blue for the selected tab, secondary grey otherwise, and a native unread badge on Notifications. It becomes a **side navigation rail** on wide layouts (tablet / unfolded foldable / 2in1), with a haptic tick on tab change
+- **Native shell**: linear progress + first-load spinner, bottom bar (Home/Explore/Notifications/Messages/Profile) with the filled HarmonyOS Symbols `house_fill`, `compass_circle_fill`, `bell_fill`, `envelope_fill`, `person_fill` — the same filled glyph in both states, with system blue for the selected tab, secondary grey otherwise, and a native unread badge on Notifications **and** Messages. It becomes a **side navigation rail** on wide layouts (tablet / unfolded foldable / 2in1), with a haptic tick on tab change
+- **Live unread counts**: the shell reads the counts from the page's own navigation entries (x.com spends its accessible labels on them, and the shell keeps `document.title`'s `"(3) …"` as a fallback), shows them on the tab bar, clears the one for the tab you are on, and re-reads them on every in-page navigation, every 30 s, and whenever the app comes back to the foreground. The same total is handed to `notificationManager.setBadgeNumber` so the launcher icon carries it too. Arabic-Indic digits are normalised, so the count survives an Arabic page
 - **Native headers, laid out like the stock app**: Home gets the account avatar plus a native "For you / Following" switcher that drives the page's real timeline tab; Explore puts a native `Search` field in the header (it also stays put on result pages); Notifications/Messages/Profile get a centred title over a subtitle (`@handle` on profiles) with at most one trailing gear — notification settings, settings, settings — and nothing else. Pages pushed from a tab keep a back arrow and a real page name, never a duplicated tab label
 - **Native account menu**: the Home avatar opens a HarmonyOS menu for Profile, Bookmarks, Lists and Settings and privacy, so those pages are one tap away instead of buried in the web UI
 - **Native compose**: floating compose button on the four content tabs opening a native bottom sheet (Cancel / New post / Post) that hosts `x.com/compose/post`; Post drives the page's own submit button and reports the outcome as a native toast. On Messages the same button starts a new direct message, as the stock app does
@@ -16,7 +17,8 @@ Previous native-API mock (8 starter posts via fxtwitter/syndication) was **repla
 - **Tab sync**: in-page web navigation updates the native tab index via URL mapping
 - **Web hardening**: JavaScript + DOM storage on, `mixedMode(Compatible)`, `fileAccess(false)`, `CacheMode.Default`, `WebDarkMode.Auto`, zoom/overview on, autoplay gesture off, custom UA `OpenTwit-Web/1.0 HarmonyOS`
 - **Resilience**: native offline card with Retry on `onErrorReceive`, automatic render-process recovery on `onRenderExited`
-- **HarmonyOS compliance**: layered app icon, system colour resources (real light/dark), `app.string.*` localisation (en + zh_CN), native back navigation, geolocation consent dialog, system photo picker for uploads — see [docs/HARMONY_GUIDELINE_AUDIT.md](docs/HARMONY_GUIDELINE_AUDIT.md)
+- **System language**: every shell string comes from `app.string.*` with `base` (English), `zh_CN` and `ar` qualifiers, and the layout mirrors for right-to-left from the system setting alone (ArkUI `Direction.Auto`) — a phone set to Arabic gets an Arabic shell *and* an Arabic x.com inside it. Adding another language is one more resource directory, no code change
+- **HarmonyOS compliance**: layered app icon, system colour resources (real light/dark), `app.string.*` localisation (en + zh_CN + ar, RTL), native back navigation, geolocation consent dialog, system photo picker for uploads — see [docs/HARMONY_GUIDELINE_AUDIT.md](docs/HARMONY_GUIDELINE_AUDIT.md)
 - Phone / tablet, Stage model only, API 24
 
 ## Signed build
@@ -73,15 +75,26 @@ Signed-out login walls on the same AVD, kept for completeness:
 [Messages](screenshots/final/foldable/07-messages.jpeg),
 [Profile](screenshots/final/foldable/08-profile.jpeg).
 
+### System language and unread badges — 2026-09-22
+
+The same HAP, driven by the phone's own language setting and by what the page
+reports, captured for a reviewer's two asks (system languages, live badges):
+
+| | |
+| --- | --- |
+| <img src="screenshots/fixes-2026-09-22/01-arabic-rtl-home.jpeg" width="320" alt="Arabic, right to left"> **Arabic.** `الرئيسية / استكشاف / الإشعارات / الرسائل / الملف الشخصي`, the native Home switcher, the avatar and the compose FAB all mirrored for RTL — and x.com rendering Arabic inside it. | <img src="screenshots/fixes-2026-09-22/02-unread-badges-tabs.jpeg" width="320" alt="Unread badges"> **Unread badges.** `3` on Notifications and `2` on Messages at once; the launcher icon got the same total. |
+| <img src="screenshots/fixes-2026-09-22/03-follows-system-language.jpeg" width="320" alt="Chinese, follows the system"> **Still follows the system.** Same build, phone left on zh-Hans: shell and page are Chinese again. | |
+
 ## Project layout (remade)
 - `AppScope/app.json5` — bundle `com.opentwit.web`
 - `entry/src/main/ets/entryability/EntryAbility.ets` — loads `pages/MainTabs`
 - `entry/src/main/ets/pages/MainTabs.ets` — single WebView + native chrome (the whole app)
 - `entry/src/main/ets/common/WebConfig.ets` — routes, titles, UA, URL→tab mapping
 - `entry/src/main/ets/common/Theme.ets` — font + theme tokens
-- `entry/src/main/resources/{base,dark,zh_CN}/element/*.json` — strings + start-window colour per qualifier; UI colours come from `sys.color.*`
+- `entry/src/main/resources/{base,ar,dark,zh_CN}/element/*.json` — strings + start-window colour per qualifier; UI colours come from `sys.color.*`
 - `AppScope/resources/base/media/{layered_image.json,background.png,foreground.png,app_icon.png}` — layered app icon, generated by `scripts/make-icons.py`
 - `scripts/sign-hap.sh` — profile + HAP signing with the SDK's OpenHarmony test material, then verification (output lands in `dist/`, which is git-ignored; releases carry the artifact)
+- `scripts/check-unread-counts.mjs` — runs the injected unread-count script against a stub DOM (`node scripts/check-unread-counts.mjs`); the script the shell sends to x.com is a string, so this is what keeps it honest
 - `screenshots/final/{mobile,foldable}/` — the device evidence shown above, captured with `hdc ... uitest screenCap`
 - `docs/HARMONY_GUIDELINE_AUDIT.md` — the audit log: findings, fixes, native-vs-web ownership table, device verification and the signing boundary
 - Old `services/` (`WebTimeline`, `UserApi`, …), `viewmodels/`, `components/TweetCard|Composer|LiveTweetList`, `pages/Home|Explore|Notify|Messages|Profile|Login|Detail|UserProfile`, `common/TokenStore|WebFallback|HarmonyCard` removed — dead native-mock stack

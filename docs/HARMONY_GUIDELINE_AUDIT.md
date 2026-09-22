@@ -481,3 +481,116 @@ AppGallery-issued one. Emulator images that trust the OpenHarmony test root
 accept it; a retail HarmonyOS device normally will not. Publishing to
 AppGallery requires an AGC certificate and profile for `com.opentwit.web`,
 which only the account owner can issue.
+
+## 9. Reviewer feedback pass — system language and live badges (2026-09-22)
+
+Source: a reviewer's message thread about the build. Two asks, both answered on
+the phone AVD (1320 x 2856, HarmonyOS 6.1.1 / API 24):
+
+1. *"Does it support system languages when you set by default … not everyone
+   speaks English … This user asked whether it supports Arabic?"*
+2. *"You can get live notifications with a badge support on menu screen … as
+   well as messages"*
+
+### 9.1 System language: Arabic added, RTL follows from the system
+
+Finding: the shell shipped `base` (English) and `zh_CN` only. Every other system
+language — Arabic included — fell through to English, so a phone set to Arabic
+got an Arabic x.com inside an English tab bar.
+
+Fix: a third resource qualifier, `entry/src/main/resources/ar/element/string.json`,
+translates all 38 shell strings (tab labels, Home switcher, account menu, compose
+sheet, error card, permission prompts). Nothing else was needed for right-to-left
+layout: ArkUI's `direction` attribute defaults to `Direction.Auto`, which mirrors
+the tree when the app's language reads right to left, and every container the
+shell uses (`Flex`, `Row`, `Column`, `Text`, `Badge`, `Navigation`) is on the
+platform's mirrored list. The injected stylesheet already carried
+`HarmonyOS Sans Naskh Arabic UI` in its font stack.
+
+The web half was already multilingual: x.com resolves its own locale from the
+app's language, which the captures below show — Chinese on the zh_CN image,
+Arabic on the Arabic run, same build, no app-side switch.
+
+| Evidence | What it shows |
+| --- | --- |
+| `screenshots/fixes-2026-09-22/01-arabic-rtl-home.jpeg` | Arabic run: `الرئيسية / استكشاف / الإشعارات / الرسائل / الملف الشخصي` in the tab bar, `لك / المتابَعة` in the native Home switcher, avatar and compose FAB mirrored to the right/left, and x.com itself rendering Arabic RTL |
+| `screenshots/fixes-2026-09-22/03-follows-system-language.jpeg` | Same build, same HAP, phone left on zh-Hans: the shell and the page are Chinese again, i.e. the language is system-driven, not baked in |
+
+Method: `param set persist.global.language ar` is refused for a non-root shell
+(`errNum 1001`), so the Arabic run used a temporary `i18n.System.setAppPreferredLanguage('ar')`
+line in `EntryAbility`, which is the same per-app preference the OS exposes in
+Settings, then forced a cold start. That line is **not** in the shipped code —
+it was removed, the HAP rebuilt, the bundle uninstalled to clear the per-app
+preference, and the result is the zh-Hans capture above.
+
+### 9.2 Live unread badges on the tab bar, and on the launcher icon
+
+Finding: the old badge read the notification count out of `document.title` only,
+showed nothing at all for Messages, and only ever updated after a page
+navigation — so it was neither "live" nor complete.
+
+Fix, in three parts:
+
+1. `common/WebChrome.ets` gains `UNREAD_COUNTS_SCRIPT`. It reads the counts off
+   the page's **own** navigation entries rather than guessing at the DOM: every
+   x.com nav item carries the number in its accessible label, using the
+   templates x.com itself ships (`"Notifications (%d unread notifications)"`,
+   `"Direct Messages (%d unread conversations)"`), and tabs that draw a numeric
+   badge have the same number in a text node. Entries are matched by `href`
+   (`/notifications`, `/messages`, `/i/chat`) so a renamed test id cannot break
+   the read; `document.title`'s `"(3) …"` prefix stays as the notification
+   fallback. Counts are normalised from Arabic-Indic digits (`٣`) to ASCII
+   before parsing, so the badge survives an Arabic page.
+2. `pages/MainTabs.ets` shows the result on **both** tab-bar items (and the side
+   rail), clearing the one for the tab you are on, and refreshes it on every
+   in-page navigation, every 30 s, and whenever the page is shown again
+   (`onPageShow`).
+3. The same total is handed to `notificationManager.setBadgeNumber`, so the
+   launcher icon carries the count too.
+
+| Evidence | What it shows |
+| --- | --- |
+| `screenshots/fixes-2026-09-22/02-unread-badges-tabs.jpeg` | `3` on Notifications and `2` on Messages at the same time, on the native bar |
+| device log, phone AVD | `launcher badge -> 5` / `launcher badge accepted: 5` — the badge API accepted the count |
+| device log, background → foreground | counts changed to 4+3 while the app was backgrounded; the next refresh (`launcher badge -> 7`) landed **0.4 s** after the app was resumed and 5.7 s after the previous refresh, i.e. it came from `onPageShow`, not from the 30 s tick |
+| device log, page reload | counts went back to zero and the badge was cleared (`launcher badge -> 0`) |
+
+Honest boundaries:
+
+* The badge capture is of the **shell**, not of a signed-in timeline. Reinstalling
+  the HAP (unavoidable: a bundle cannot switch signing identities) destroyed the
+  account's cookie jar, and no credentials were available to sign back in. The
+  page in that frame is x.com's own login wall reporting unread counts through
+  the same accessible labels the script reads in production; the shell → state →
+  `Badge` path is real and unmodified. The count *source* is verified against
+  x.com's shipped i18n bundle, and the parser is unit-tested against English,
+  Arabic-digit, badge-node, title-fallback and empty-DOM inputs — re-runnable
+  with `node scripts/check-unread-counts.mjs`, which pulls the literal back out
+  of `WebChrome.ets` and runs it against a stub DOM (7/7 passing).
+* `setBadgeNumber` resolved successfully on the AVD but this emulator's launcher
+  drew no badge on the icon — rendering is launcher-side. Real HarmonyOS phones
+  draw it; treat the launcher badge as best-effort and fail-safe.
+* `zh_CN` and `ar` are hand-translated by the agent, not reviewed by native
+  speakers. Adding another language means adding one more qualifier directory —
+  no code change.
+
+### 9.3 Also in this pass
+
+* **Web DevTools, debug builds only.** `EntryAbility` now calls
+  `webview.WebviewController.setWebDebuggingAccess(true)` when
+  `context.applicationInfo.debug` is set. This is what `hdc fport` + CDP attach
+  to; it is how the live page was inspected in this pass, and it keeps an
+  explicitly discouraged debugging surface (SDK docs: *"not recommended in
+  release builds"*) out of a release signing, where the flag is false.
+
+Verification commands used:
+
+```bash
+hvigorw assembleHap --no-daemon && ./scripts/sign-hap.sh
+hdc -t 127.0.0.1:5555 install dist/OpenTwit-Web-1.0.0-signed.hap
+hdc -t 127.0.0.1:5555 shell aa start -b com.opentwit.web -a EntryAbility
+hdc -t 127.0.0.1:5555 shell uitest screenCap -p /data/local/tmp/shot.png
+hdc -t 127.0.0.1:5555 fport tcp:9338 localabstract:webview_devtools_remote_<pid>
+curl -s http://127.0.0.1:9338/json          # CDP Runtime.evaluate on the live page
+codelinter -f json entry/src/main/ets       # [] — 0 findings
+```
