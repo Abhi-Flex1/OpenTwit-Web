@@ -110,7 +110,13 @@ export function chromeScript(ownHandle: string, tabRoot: boolean, band: number):
     'if(bestS)H(bestS);' +
     'H(s);}' +
     'var links=QA(\'a[href^="/settings"],a[href="/messages/compose"],a[href^="/premium"],a[href^="/i/premium"],a[href="/login"]\');' +
-    'for(var i=0;i<links.length;i++){if(T(links[i]))H(links[i]);}' +
+    // Only icon-only chrome goes: this rule exists for the header's own gear
+    // and pencil, which carry no text. A *settings page* puts its own rows in
+    // the same shape near the top (x.com's "Filters" / "Preferences" pivots),
+    // and hiding those left the page showing nothing but its description.
+    'for(var i=0;i<links.length;i++){try{' +
+    'var lt=(links[i].innerText||\'\').replace(/\\s+/g,\'\');' +
+    'if(lt.length===0&&T(links[i]))H(links[i]);}catch(_){}}' +
     'var logo=Q(\'a[href="/home"]\')||Q(\'a[href="/"]\')||Q(\'svg[aria-label="X"]\')||Q(\'a[aria-label="X"]\')||Q(\'a[aria-label="Home"]\');' +
     'if(logo){var lk=logo;try{lk=logo.closest(\'a\')||logo;}catch(_){}' +
     'if(root||T(lk))H(lk);}' +
