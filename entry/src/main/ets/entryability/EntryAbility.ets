@@ -1,4 +1,5 @@
 import { AbilityConstant, UIAbility, Want } from '@kit.AbilityKit';
+import i18n from '@ohos.i18n';
 import { BusinessError, deviceInfo } from '@kit.BasicServicesKit';
 import { preferences } from '@kit.ArkData';
 import { hilog } from '@kit.PerformanceAnalysisKit';
@@ -12,10 +13,40 @@ const WINDOW_SIZED_KEY: string = 'pc_window_sized';
 // Below this the display is phone-shaped, so there is no desktop window to set.
 const DESKTOP_MIN_WIDTH_VP: number = 1000;
 
+// The app's own language, independent of the system language. x.com's login
+// risk checks read the browser's Accept-Language / lang cookie, and the
+// HarmonyOS emulator images report zh-Hans / Asia-Shanghai regardless of where
+// the user really is — so a system-driven app asks x.com for Chinese from an
+// English-speaking account and trips its "temporarily limited" wall. The app
+// pins itself to English, which is the language the product ships in and the
+// one x.com expects for this account. Set to 'default' to follow the system
+// again.
+const APP_LANGUAGE: string = 'en-US';
+
 export default class EntryAbility extends UIAbility {
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
     hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onCreate');
+    this.pinAppLanguage();
     this.enableWebDevToolsForDebugBuilds();
+  }
+
+  // The preferred language is read when the page is loaded, so this runs in
+  // onCreate — before loadContent. It is a no-op once the choice is already
+  // in effect, so it cannot loop.
+  private pinAppLanguage(): void {
+    if (!canIUse('SystemCapability.Global.I18n')) {
+      return;
+    }
+    try {
+      const current: string = i18n.System.getAppPreferredLanguage();
+      if (current !== APP_LANGUAGE) {
+        i18n.System.setAppPreferredLanguage(APP_LANGUAGE);
+        hilog.info(DOMAIN, 'testTag', 'app language %{public}s -> %{public}s', current, APP_LANGUAGE);
+      }
+    } catch (err) {
+      const e: BusinessError = err as BusinessError;
+      hilog.warn(DOMAIN, 'testTag', 'app language not pinned: %{public}d %{public}s', e.code, e.message);
+    }
   }
 
   // ArkWeb's DevTools bridge is what `hdc fport` + CDP attach to. It is a

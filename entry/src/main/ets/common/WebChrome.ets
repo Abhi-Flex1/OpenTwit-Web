@@ -7,6 +7,8 @@
 //
 // All scripts are injected as strings through WebviewController.runJavaScript.
 
+import { pageBridgeScript } from './PageBridge';
+
 // CSS injected once per page. Tab roots lose X's own navigation rows; the
 // floating compose button is always dropped because the shell provides a native
 // one (only rendered while signed in).
@@ -52,6 +54,433 @@ export const ONLINE_PATCH: string =
   'try{Object.defineProperty(window.navigator,"onLine",' +
   '{configurable:true,get:otIsOnline});}catch(e){}' +
   '}catch(e){}})();';
+
+// The shell's title bar and tab bar float over the page so content scrolls
+// underneath them and blurs — that layering is the whole point of the frosted
+// bars. For that the page's own content has to start below the bar and end above
+// it, which only the page's box model can do: insetting the WebView's viewport
+// instead would stop content from ever passing under the bars.
+//
+// Values are CSS pixels. ArkWeb reports one CSS pixel per vp on these devices
+// (device px / densityPixels), so the shell can pass its vp metrics straight in.
+export function immersiveInsetScript(topCssPx: number, bottomCssPx: number): string {
+  return '(function(top,bottom){try{' +
+    'var s=document.getElementById(\'ot-inset\');' +
+    'if(!s){s=document.createElement(\'style\');s.id=\'ot-inset\';' +
+    '(document.head||document.documentElement).appendChild(s);}' +
+    's.textContent=\'#react-root{padding-top:\'+top+\'px !important;' +
+    'padding-bottom:\'+bottom+\'px !important;box-sizing:border-box !important}\';' +
+    '}catch(e){}})(' + Math.round(topCssPx) + ',' + Math.round(bottomCssPx) + ');';
+}
+
+// ---------------------------------------------------------------------------
+// Direct messages, read out of the page's own session.
+//
+// The shell never holds a token. It runs this inside the x.com origin, where the
+// session cookies already apply, so the account's real inbox is what comes back.
+// The bearer token the web client uses for its own API calls is the only thing
+// missing, and that is discovered once from the page's own scripts and cached on
+// the window — it is the same public web token every x.com browser session
+// already carries.
+//
+// Everything here is defensive: signed out, rate limited, a rotated endpoint or
+// a changed bundle all end as a state the native surface can render honestly
+// instead of an exception.
+// ---------------------------------------------------------------------------
+// Direct messages, read out of the page's own session.
+//
+// The shell never holds a token. It runs this inside the x.com origin, where the
+// session cookies already apply, so the account's real inbox is what comes back.
+// The bearer token the web client uses for its own API calls is the only thing
+// missing, and that is discovered once from the page's own scripts and cached on
+// the window — it is the same public web token every x.com browser session
+// already carries.
+//
+// Everything here is defensive: signed out, rate limited, a rotated endpoint or
+// a changed bundle all end as a state the native surface can render honestly
+// instead of an exception.
+export function dmInboxScript(): string {
+  return pageBridgeScript(
+    'var r=await otGet("/i/api/1.1/dm/inbox_initial_state.json' +
+    '?include_conversation_info=true&include_inbox_timelines=true&include_groups=true");' +
+    'if(r.error)return JSON.stringify({state:r.error});' +
+    'var st=r.data&&r.data.inbox_initial_state;' +
+    'if(!st)return JSON.stringify({state:"unexpected"});' +
+    'var users=st.users||{};var convs=st.conversations||{};' +
+    'var accountId=otAccountFromConvs(convs);' +
+    // Newest message per conversation. The conversation id lives on the message
+    // envelope, not inside message_data.
+    'var byId={};' +
+    'var ent=(st.entries||[]);' +
+    'for(var e=0;e<ent.length;e++){var en=ent[e]||{};var msg=en.message||null;' +
+    'var mid=(msg&&msg.message_data)||null;' +
+    'if(!mid||!msg.conversation_id)continue;' +
+    'var cid=msg.conversation_id;var at=Number(msg.time)||0;' +
+    'var prev=byId[cid];' +
+    'if(!prev||at>prev.at){' +
+    'byId[cid]={at:at,text:otText(mid.text).slice(0,140),' +
+    'out:(String(mid.sender_id||"")===String(accountId))};}}' +
+    'var out=[];' +
+    'Object.keys(convs).forEach(function(k){var c=convs[k];if(!c)return;' +
+    'var last=byId[k]||null;' +
+    'var name="",handle="",avatar="",uid="";' +
+    // A named conversation is a group DM and carries its own title and picture;
+    // everything else is named after the other participant.
+    'if(c.name){name=c.name;avatar=c.avatar_image_https||"";}' +
+    'else{' +
+    'var parts=(c.participants||[]).map(function(p){return users[p.user_id]||null;})' +
+    '.filter(function(u){return u&&String(u.id_str||u.rest_id||"")!==String(accountId);});' +
+    'if(!parts.length)return;' +
+    'var u=parts[0];name=u.name||u.screen_name||"";' +
+    'handle=u.screen_name||"";' +
+    'uid=String(u.id_str||u.rest_id||"");' +
+    'avatar=(u.profile_image_url_https||"").replace("_normal","_bigger");}' +
+    'if(!name&&!handle)return;' +
+    'out.push({id:k,name:name,handle:handle,avatar:avatar,uid:uid,' +
+    'text:last?last.text:"",out:last?last.out:false,at:last?last.at:0,' +
+    'muted:!!c.muted});});' +
+    'out.sort(function(a,b){return (b.at||0)-(a.at||0);});' +
+    'return JSON.stringify({state:"ok",conversations:out.slice(0,40)});');
+}
+
+// Identity read straight off the page session, with no DOM involved. The inbox
+// names its participants, so the account present in the most one-to-one
+// conversations is the signed-in user, and its own entry carries the handle
+// and picture. This works on every page — verified on x.com/settings/profile,
+// which renders no account navigation at all, so the DOM paths (nav link,
+// account menu) both come up empty there. Returns the handle straight away;
+// the profile script itself still needs the DOM because it shows posts.
+export function sessionIdentityScript(): string {
+  return pageBridgeScript(
+    'var r=await otGet("/i/api/1.1/dm/inbox_initial_state.json' +
+    '?include_conversation_info=true&include_groups=true");' +
+    'if(r.error)return JSON.stringify({state:r.error});' +
+    'var st=r.data&&r.data.inbox_initial_state;if(!st)return JSON.stringify({state:"unexpected"});' +
+    'var me=otAccountFromInbox(st);' +
+    'if(!me||!me.handle)return JSON.stringify({state:"empty"});' +
+    'return JSON.stringify({state:"ok",id:me.id,handle:me.handle,name:me.name,avatar:me.avatar});');
+}
+
+// Injected at document start. x.com renders the account entry after hydration
+// and removes it on some routes entirely, so a signed-in page cannot be
+// trusted to announce itself through its own DOM. The session cookie is
+// synchronous and exact, so the page watches it and tells the native shell the
+// moment a session appears — that is what closes "logged in on the page, app
+// still says signed out" on routes like settings where no other signal fires.
+export const SESSION_WATCHER: string =
+  '(function(){try{' +
+  'if(window.__otSessionWatch)return;window.__otSessionWatch=1;' +
+  'var had=false;' +
+  'window.__otSessionSeen=function(){try{' +
+  'var now=/(?:^|;\\s*)ct0=/.test(document.cookie);' +
+  'if(now&&!had){had=true;' +
+  'try{if(window.otNative&&window.otNative.onSessionAppeared)window.otNative.onSessionAppeared();}catch(e){}}' +
+  'else if(!now){had=false;}}catch(e){}};' +
+  'try{document.addEventListener("cookieChanged",window.__otSessionSeen);}catch(e){}' +
+  'try{new MutationObserver(function(){window.__otSessionSeen();}).observe(document.documentElement,{attributes:true});}catch(e){}' +
+  'window.__otSessionSeen();' +
+  'setInterval(window.__otSessionSeen,1000);' +
+  '}catch(e){}})();';
+
+// Full thread history for one conversation. Verified live against a signed-in
+// session: `conversation_timeline` carries `entries`, `users` and
+// `conversations`; message entries are flat
+// `{id,time,sender_id,recipient_id,text}` while system entries
+// (`participants_leave`, cursors) carry no text and are skipped. Falls back to
+// filtering the inbox timeline. Returns newest-last so the native thread can
+// render bottom-anchored without re-sorting.
+export function dmThreadScript(conversationId: string): string {
+  const safe: string = JSON.stringify(conversationId);
+  return pageBridgeScript(
+    'var cid=' + safe + ';' +
+    'var r=await otGet("/i/api/1.1/dm/conversation/"+encodeURIComponent(cid)+".json' +
+    '?include_conversation_info=true");' +
+    'var msgs=[];var accountId="";' +
+    'if(!r.error&&r.data){' +
+    'var tl=r.data.conversation_timeline||r.data;' +
+    'var users=tl.users||r.data.users||{};' +
+    'var convs=tl.conversations||r.data.conversations||{};accountId=otAccountFromConvs(convs);' +
+    'var entries=tl.entries||tl.timeline||[];' +
+    'for(var i=0;i<entries.length;i++){var en=entries[i]||{};var m=en.message||en;var md=m.message_data||m;if(!md)continue;' +
+    'var txt=otText(md.text);if(!txt)continue;' +
+    'var at=otTime(m.time||m.created_at||md.time);' +
+    'var sender=String(m.sender_id||md.sender_id||"");' +
+    'msgs.push({id:String(m.id||md.id||(cid+"-"+i)),text:txt.slice(0,500),out:accountId?sender===String(accountId):false,at:at});}}' +
+    'if(!msgs.length){' +
+    'var b=await otGet("/i/api/1.1/dm/inbox_initial_state.json' +
+    '?include_conversation_info=true&include_inbox_timelines=true");' +
+    'if(b.error)return JSON.stringify({state:b.error});' +
+    'var st=b.data&&b.data.inbox_initial_state;if(!st)return JSON.stringify({state:"unexpected"});' +
+    'accountId=otAccountFromConvs(st.conversations||{});' +
+    'var ent=(st.entries||[]);' +
+    'for(var e=0;e<ent.length;e++){var en2=ent[e]||{};var mm=en2.message||null;if(!mm||mm.conversation_id!==cid)continue;' +
+    'var dd=mm.message_data||{};var t2=otText(dd.text);if(!t2)continue;' +
+    'msgs.push({id:String(mm.id||(cid+"-"+e)),text:t2.slice(0,500),' +
+    'out:String(dd.sender_id||"")===String(accountId),at:Number(mm.time)||0});}' +
+    'if(!msgs.length)return JSON.stringify({state:"empty"});}' +
+    'msgs.sort(function(a,b){return (a.at||0)-(b.at||0);});' +
+    'return JSON.stringify({state:"ok",id:cid,messages:msgs.slice(-60)});');
+}
+
+// Real DM send through the page session. The inbox supplies `uid` (the other
+// participant) for one-to-one conversations; group sends address the
+// conversation instead. Anything the API will not accept ends as a state, never
+// as an exception.
+export function dmSendScript(recipientId: string, text: string): string {
+  const rid: string = JSON.stringify(recipientId);
+  const body: string = JSON.stringify(text.slice(0, 1000));
+  return pageBridgeScript(
+    'var rid=' + rid + ';var txt=' + body + ';' +
+    'if(!txt||!txt.trim())return JSON.stringify({state:"empty"});' +
+    'var r=await otPost("/i/api/1.1/direct_messages/events/new.json",' +
+    '{event:{type:"message_create",message_create:{target:{recipient_id:rid},message_data:{text:txt}}}});' +
+    'if(r.error)return JSON.stringify({state:r.error});' +
+    'return JSON.stringify({state:"ok"});');
+}
+
+// Notifications list. Verified live against a signed-in session: the v2
+// endpoint answers `{globalObjects:{users,tweets},timeline:{instructions}}`
+// where each `addEntries` instruction carries `notification-<id>` entries shaped
+// `{item:{content:{notification:{id,fromUsers[],targetTweets[]}},clientEventInfo:{element}}}`.
+// The kind comes from `clientEventInfo.element` (`users_liked_your_tweet`,
+// `users_retweeted_your_tweet`, `user_replied_to_your_tweet`,
+// `follow_from_recommended_user`, `user_mentioned_you`, …) and the time from
+// the entry's `sortIndex`. Cursor entries (`content.operation`) are skipped.
+export function notificationsScript(): string {
+  return pageBridgeScript(
+    'var r=await otGet("/i/api/2/notifications/all.json?count=40");' +
+    'if(r.error)return JSON.stringify({state:r.error});' +
+    'var d=r.data||{};var glob=d.globalObjects||{};var users=glob.users||{};var tweets=glob.tweets||{};' +
+    'var ins=(d.timeline&&d.timeline.instructions)||[];var out=[];' +
+    'function av(u){return ((u&&u.profile_image_url_https)||"").replace("_normal","_bigger");}' +
+    'for(var i=0;i<ins.length&&out.length<40;i++){' +
+    'var en=(((ins[i]||{}).addEntries)||{}).entries||[];' +
+    'for(var j=0;j<en.length&&out.length<40;j++){var e=en[j]||{};' +
+    'var it=(e.content&&e.content.item)||null;if(!it)continue;' +
+    'var nn=(it.content&&it.content.notification)||null;if(!nn)continue;' +
+    'var el=String((it.clientEventInfo&&it.clientEventInfo.element)||"").toLowerCase();' +
+    'var kind="mention";' +
+    'if(el.indexOf("like")>=0)kind="like";' +
+    'else if(el.indexOf("retweet")>=0)kind="repost";' +
+    'else if(el.indexOf("repl")>=0)kind="reply";' +
+    'else if(el.indexOf("follow")>=0)kind="follow";' +
+    'else if(el.indexOf("mention")>=0)kind="mention";' +
+    'var fu=nn.fromUsers||[];var u=fu.length?users[String(fu[0])]:null;' +
+    'var tt=nn.targetTweets||[];var tw=tt.length?tweets[String(tt[0])]:null;' +
+    'var txt=tw?otText(tw.full_text||tw.text).slice(0,180):"";' +
+    'var nm=u?(u.name||u.screen_name||""):"";' +
+    'if(!nm&&!txt)continue;' +
+    'out.push({id:String(nn.id||e.entryId||(i+"-"+j)),kind:kind,name:nm,handle:u?(u.screen_name||""):"",' +
+    'avatar:av(u),text:txt,at:otTime(e.sortIndex)});}}' +
+    'if(!out.length)return JSON.stringify({state:"empty"});' +
+    'return JSON.stringify({state:"ok",items:out});');
+}
+
+// Shared tweet shaping used by Home, Profile and Search. Kept in one place so
+// the three surfaces render the same post the same way.
+const TWEET_SHAPE_JS: string =
+  'function otTweet(t,users){' +
+  'if(!t)return null;var u=t.user||users[t.user_id_str]||users[t.user_id]||{};' +
+  'var txt=otText(t.full_text||t.text).slice(0,500);if(!txt&&!t.id_str&&!t.id)return null;' +
+  'var id=String(t.id_str||t.id||"");if(!id)return null;' +
+  'var media="";try{var m=(t.extended_entities&&t.extended_entities.media)||(t.entities&&t.entities.media)||[];' +
+  'if(m&&m.length)media=String(m[0].media_url_https||m[0].media_url||"");}catch(e){}' +
+  'return {id:id,name:String(u.name||t.name||""),handle:String(u.screen_name||""),' +
+  'avatar:String((u.profile_image_url_https||"")).replace("_normal","_bigger"),' +
+  'text:txt,at:otTime(t.created_at),' +
+  'likes:Number(t.favorite_count||0),reposts:Number(t.retweet_count||0),' +
+  'replies:Number(t.reply_count||0),' +
+  'liked:!!t.favorited,reposted:!!t.retweeted,media:media};}';
+
+// Home timeline with cursor paging. Verified live against a signed-in session:
+// v1.1 `statuses/home_timeline` answers 200 with an empty body (dead), while
+// v2 `timeline/home.json` answers `{globalObjects:{tweets,users},timeline:{instructions}}`
+// with `tweet-<id>` entries pointing at `content.item.content.tweet.id` and a
+// `cursor-bottom-*` entry carrying the next page cursor. `cursor` is that value,
+// or '' for the first page. Paging verified overlap-free across pages.
+export function homeTimelineScript(cursor: string): string {
+  const safe: string = JSON.stringify(cursor);
+  return pageBridgeScript(
+    TWEET_SHAPE_JS +
+    'var cur=' + safe + ';' +
+    'var path="/i/api/2/timeline/home.json?count=30";' +
+    'if(cur)path+="&cursor="+encodeURIComponent(cur);' +
+    'var r=await otGet(path);' +
+    'if(r.error)return JSON.stringify({state:r.error});' +
+    'var d=r.data||{};var glob=d.globalObjects||{};var users=glob.users||{};var tweets=glob.tweets||{};' +
+    'var ins=(d.timeline&&d.timeline.instructions)||[];var out=[];var next="";' +
+    'for(var i=0;i<ins.length;i++){var en=(((ins[i]||{}).addEntries)||{}).entries||[];' +
+    'for(var j=0;j<en.length;j++){var e=en[j]||{};var eid=String(e.entryId||"");' +
+    'if(eid.indexOf("cursor-bottom")===0){try{next=e.content.operation.cursor.value||"";}catch(x){}continue;}' +
+    'if(eid.indexOf("tweet-")!==0)continue;' +
+    'var item=(e.content&&e.content.item)||null;' +
+    'var tref=item&&item.content&&item.content.tweet||null;' +
+    'var tid=tref?tref.id:"";var t=tid?tweets[String(tid)]:null;if(!t)continue;' +
+    'var p=otTweet(t,users);if(p)out.push(p);}}' +
+    'if(!out.length)return JSON.stringify({state:"empty"});' +
+    'return JSON.stringify({state:"ok",posts:out.slice(0,40),next:next});');
+}
+
+// Profile header plus recent posts, read off the rendered profile page the
+// shell already loads underneath (the v1.1 user endpoints answer 404 / empty
+// on a live session, verified). Selectors verified live against a signed-in
+// profile: `[data-testid="UserName"]` for name/@handle,
+// `[data-testid="UserDescription"]` for the bio, `img[src*="profile_images"]`
+// (largest near the top) for the avatar, `img[src*="profile_banners"]` for the
+// banner, `/following` + `/followers` links for the counts, and
+// `article[data-testid="tweet"]` with its `/status/<id>` link, `time[datetime]`
+// and action aria-labels ("9 Replies. Reply", "1 repost. Repost",
+// "37 Likes. Like", "Unlike" / "Undo repost" when active).
+//
+// `more` scrolls the page once and waits, so paging reads what the page
+// rendered next; the shell merges de-duplicated by id. Anything that is not
+// the requested profile is `{"state":"..."}`: `signed-out` for a login wall,
+// `loading` when the page has not rendered yet (the shell retries once),
+// `empty` for a rendered page with no header.
+// Profile header plus recent posts, read off the rendered profile page the
+// shell already loads underneath (the v1.1 user endpoints answer 404 / empty
+// on a live session, verified). Selectors verified live against a signed-in
+// profile: `[data-testid="UserName"]` for name/@handle,
+// `[data-testid="UserDescription"]` for the bio, `img[src*="profile_images"]`
+// (largest near the top) for the avatar, `img[src*="profile_banners"]` for the
+// banner, `/following` + `/followers` links for the counts, and
+// `article[data-testid="tweet"]` with its `/status/<id>` link, `time[datetime]`
+// and action aria-labels ("9 Replies. Reply", "1 repost. Repost",
+// "37 Likes. Like", "Unlike" / "Undo repost" when active).
+//
+// `more` scrolls the page once and waits, so paging reads what the page
+// rendered next; the shell merges de-duplicated by id. Anything that is not
+// the requested profile is `{"state":"..."}`: `signed-out` for a login wall,
+// `loading` when the page has not rendered yet (the shell retries once),
+// `empty` for a rendered page with no header.
+// Profile header plus recent posts, read off the rendered profile page the
+// shell already loads underneath (the v1.1 user endpoints answer 404 / empty
+// on a live session, verified). Selectors verified live against a signed-in
+// profile: UserName testid for name/@handle, UserDescription for the bio,
+// profile_images (largest near the top) for the avatar, profile_banners for
+// the banner, /following + /followers links for the counts, and
+// article tweets with their /status/<id> link, time datetime and action
+// aria-labels. `more` scrolls once and waits so paging reads what the page
+// rendered next; the shell merges de-duplicated by id. Anything else is a
+// state string: signed-out for a login wall, loading when not yet rendered
+// (the shell retries once), empty for a rendered page with no header.
+export function profileScript(handle: string, more: string): string {
+  const h: string = JSON.stringify(handle.replace('@', ''));
+  const m: string = JSON.stringify(more);
+  return pageBridgeScript(
+    'var want=' + h + ';var more=' + m + ';' +
+    'if(more){try{window.scrollTo(0,document.body.scrollHeight);' +
+    'await new Promise(function(res){setTimeout(res,1600);});}catch(e){}}' +
+    'function num(t){var s=String(t||"");var di="";var i=0;' +
+    'while(i<s.length&&((s.charAt(i)>="0"&&s.charAt(i)<="9")||s.charAt(i)==="."||s.charAt(i)===","))' +
+    '{if(s.charAt(i)!==",")di+=s.charAt(i);i++;}' +
+    'var n=parseFloat(di);if(isNaN(n))return 0;' +
+    'var u=s.charAt(i)||"";if(u==="K"||u==="k")n=n*1000;' +
+    'else if(u==="M"||u==="m")n=n*1000000;return Math.round(n);}' +
+    'var nameEl=document.querySelector("[data-testid=UserName]");' +
+    'if(!nameEl){' +
+    'if(document.querySelector("input[type=password]"))return JSON.stringify({state:"signed-out"});' +
+    'return JSON.stringify({state:"loading"});}' +
+    'var nx=nameEl.innerText||"";var nl=nx.indexOf(String.fromCharCode(10));' +
+    'var nm=(nl<0?nx:nx.substring(0,nl)).trim();' +
+    'var hm=want;var ai=nx.indexOf("@");' +
+    'if(ai>=0){var hh2="";for(var k=ai+1;k<nx.length&&hh2.length<15;k++)' +
+    '{var c=nx.charAt(k);var ok=(c>="a"&&c<="z")||(c>="A"&&c<="Z")||(c>="0"&&c<="9")||c==="_";' +
+    'if(!ok)break;hh2+=c;}if(hh2)hm=hh2;}' +
+    'var avatar="";try{var ims=document.querySelectorAll("img[src*=profile_images]");' +
+    'var best=0;for(var g=0;g<ims.length;g++){var r=ims[g].getBoundingClientRect();' +
+    'if(r.top<600&&r.width>best){best=r.width;avatar=ims[g].src||"";}}}catch(e){}' +
+    'var banner="";try{var bn=document.querySelector("img[src*=profile_banners]");' +
+    'if(bn)banner=bn.src||"";}catch(e){}' +
+    'var bio="";try{var bd=document.querySelector("[data-testid=UserDescription]");' +
+    'if(bd)bio=(bd.innerText||"").slice(0,280);}catch(e){}' +
+    'var fing=0,fers=0;try{var lks=document.querySelectorAll("a[href]");' +
+    'for(var li=0;li<lks.length;li++){var u2=lks[li].getAttribute("href")||"";' +
+    'if(u2.charAt(u2.length-1)==="/")u2=u2.slice(0,-1);' +
+    'if(u2.length>=10&&u2.substring(u2.length-10)==="/following")fing=num(lks[li].innerText);' +
+    'else if(u2.length>=10&&u2.substring(u2.length-10)==="/followers")fers=num(lks[li].innerText);' +
+    'else if(u2.length>=19&&u2.substring(u2.length-19)==="/verified_followers")fers=num(lks[li].innerText);}}catch(e){}' +
+    'var posts=[];try{var arts=document.querySelectorAll("article[data-testid=tweet]");' +
+    'for(var pi=0;pi<arts.length&&posts.length<25;pi++){var a=arts[pi];' +
+    'var ah="";try{var links=a.querySelectorAll("a[href]");' +
+    'for(var qi=0;qi<links.length;qi++){var lhh=links[qi].getAttribute("href")||"";' +
+    'var si=lhh.indexOf("/status/");' +
+    'if(si>=0){var dd="";for(var z=si+8;z<lhh.length&&dd.length<24;z++)' +
+    '{var cc=lhh.charAt(z);if(cc<"0"||cc>"9")break;dd+=cc;}' +
+    'if(dd){ah=dd;break;}}}}catch(e){}' +
+    'if(!ah)continue;' +
+    'var tx="";try{var tt=a.querySelector("div[data-testid=tweetText]");' +
+    'tx=((tt?tt.innerText:"")||"").slice(0,500);}catch(e){}' +
+    'if(!tx)continue;' +
+    'var tm="";try{var tmEl=a.querySelector("time");if(tmEl)tm=tmEl.getAttribute("datetime")||"";}catch(e){}' +
+    'var rp=0,rt=0,lk=0,liked=false,reposted=false;' +
+    'try{var btns=a.querySelectorAll("button,[role=button]");' +
+    'for(var bi=0;bi<btns.length;bi++){var lb=(btns[bi].getAttribute("aria-label")||"").toLowerCase();' +
+    'if(lb.indexOf("repl")>=0)rp=num(lb);' +
+    'else if(lb.indexOf("repost")>=0){rt=num(lb);if(lb.indexOf("undo")>=0)reposted=true;}' +
+    'else if(lb.indexOf("like")>=0){lk=num(lb);if(lb.indexOf("unlike")>=0)liked=true;}}}catch(e){}' +
+    'posts.push({id:ah,name:nm,handle:hm,avatar:avatar,text:tx,at:otTime(tm),' +
+    'likes:lk,reposts:rt,replies:rp,liked:liked,reposted:reposted,media:""});}}catch(e){}' +
+    'if(!nm&&!posts.length)return JSON.stringify({state:"empty"});' +
+    'return JSON.stringify({state:"ok",user:{name:nm,handle:hm,avatar:avatar,banner:banner,' +
+    'bio:bio,location:"",followers:fers,following:fing,posts:0,at:0},' +
+    'posts:posts,next:(posts.length>=25?"more":"")});');
+}
+// Trends for Explore. Returns named topics with optional volume.
+export function trendsScript(): string {
+  return pageBridgeScript(
+    'var r=await otGet("/i/api/1.1/trends/place.json?id=1");' +
+    'if(r.error)return JSON.stringify({state:r.error});' +
+    'var d=r.data;if(d instanceof Array)d=d[0];' +
+    'var arr=(d&&d.trends)||[];' +
+    'var out=[];for(var i=0;i<arr.length&&out.length<20;i++){var t=arr[i]||{};' +
+    'var nm=String(t.name||"");if(!nm)continue;' +
+    'out.push({name:nm,posts:t.tweet_volume?String(t.tweet_volume):""});}' +
+    'if(!out.length)return JSON.stringify({state:"empty"});' +
+    'return JSON.stringify({state:"ok",trends:out});');
+}
+
+// Explore search. Verified live: v2 `search/adaptive` answers 200 with an
+// empty body and v1.1 `search/tweets` is equally empty, so full tweet search
+// has no working endpoint in this session. What does work is v1.1
+// `search/typeahead` (`topics` with `topic` + token breakdown), which is what
+// the client itself uses for suggestions — so Explore search returns real
+// topic suggestions in the same `{trends}` shape as the trends list, and the
+// surface renders them as tappable rows instead of fabricated tweet results.
+export function searchTweetsScript(query: string, cursor: string): string {
+  const q: string = JSON.stringify(query);
+  return pageBridgeScript(
+    'var qq=' + q + ';' +
+    'if(!qq||!qq.trim())return JSON.stringify({state:"empty"});' +
+    'var r=await otGet("/i/api/1.1/search/typeahead.json?q="+encodeURIComponent(qq)' +
+    '+"&result_type=topics%2Cusers&count=12");' +
+    'if(r.error)return JSON.stringify({state:r.error});' +
+    'var arr=(r.data&&r.data.topics)||[];var out=[];' +
+    'for(var i=0;i<arr.length&&out.length<12;i++){var nm=String(arr[i].topic||"");' +
+    'if(nm)out.push({name:nm,posts:""});}' +
+    'if(!out.length)return JSON.stringify({state:"empty"});' +
+    'return JSON.stringify({state:"ok",trends:out});');
+}
+
+// Like / unlike / repost / unrepost through the page session. The native post
+// row applies the change optimistically; this is the real write behind it.
+export function postActionScript(kind: string, tweetId: string): string {
+  const k: string = JSON.stringify(kind);
+  const tid: string = JSON.stringify(tweetId);
+  return pageBridgeScript(
+    'var kind=' + k + ';var tid=' + tid + ';' +
+    'if(!tid)return JSON.stringify({state:"empty"});' +
+    'var path="";' +
+    'if(kind==="like")path="/i/api/1.1/favorites/create.json?id="+encodeURIComponent(tid);' +
+    'else if(kind==="unlike")path="/i/api/1.1/favorites/destroy.json?id="+encodeURIComponent(tid);' +
+    'else if(kind==="repost")path="/i/api/1.1/statuses/retweet/"+encodeURIComponent(tid)+".json";' +
+    'else if(kind==="unrepost")path="/i/api/1.1/statuses/unretweet/"+encodeURIComponent(tid)+".json";' +
+    'else return JSON.stringify({state:"unexpected"});' +
+    'var r=await otPost(path,{});' +
+    'if(r.error)return JSON.stringify({state:r.error});' +
+    'return JSON.stringify({state:"ok"});');
+}
+
 
 // How often the chrome pass may re-run when it is reacting to page mutations.
 // The first pass stays immediate (no double chrome on first paint); only the

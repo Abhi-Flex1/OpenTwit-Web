@@ -151,6 +151,314 @@
     {
       "name": "post",
       "value": "منشور"
+    },
+    {
+      "name": "messages_chat_title",
+      "value": "الدردشة"
+    },
+    {
+      "name": "messages_filter_all",
+      "value": "الكل"
+    },
+    {
+      "name": "messages_search_placeholder",
+      "value": "البحث في المحادثات"
+    },
+    {
+      "name": "messages_new_message",
+      "value": "رسالة جديدة"
+    },
+    {
+      "name": "messages_empty_title",
+      "value": "لا توجد محادثات"
+    },
+    {
+      "name": "messages_empty_message",
+      "value": "ابدأ محادثة مع شخص ما."
+    },
+    {
+      "name": "messages_composer_placeholder",
+      "value": "رسالة"
+    },
+    {
+      "name": "messages_add_attachment",
+      "value": "إضافة مرفق"
+    },
+    {
+      "name": "messages_voice",
+      "value": "رسالة صوتية"
+    },
+    {
+      "name": "messages_send",
+      "value": "إرسال الرسالة"
+    },
+    {
+      "name": "messages_call",
+      "value": "اتصال"
+    },
+    {
+      "name": "messages_video",
+      "value": "مكالمة مرئية"
+    },
+    {
+      "name": "messages_more",
+      "value": "خيارات أخرى"
+    },
+    {
+      "name": "messages_attachment_selected",
+      "value": "المرفق جاهز"
+    },
+    {
+      "name": "messages_filter_unread",
+      "value": "غير المقروءة"
+    },
+    {
+      "name": "messages_filter_title",
+      "value": "تصفية المحادثات"
+    },
+    {
+      "name": "messages_mute",
+      "value": "كتم"
+    },
+    {
+      "name": "messages_unmute",
+      "value": "إلغاء الكتم"
+    },
+    {
+      "name": "messages_muted",
+      "value": "تم الكتم"
+    },
+    {
+      "name": "messages_unmuted",
+      "value": "تم إلغاء الكتم"
+    },
+    {
+      "name": "messages_archive",
+      "value": "أرشفة"
+    },
+    {
+      "name": "messages_archived",
+      "value": "تمت الأرشفة"
+    },
+    {
+      "name": "messages_emoji",
+      "value": "رموز تعبيرية"
+    },
+    {
+      "name": "messages_remove_attachment",
+      "value": "إزالة المرفق"
+    },
+    {
+      "name": "messages_signed_out_title",
+      "value": "لم تسجّل الدخول"
+    },
+    {
+      "name": "messages_signed_out_message",
+      "value": "سجّل الدخول إلى x.com من تبويب الرئيسية وستظهر محادثاتك هنا."
+    },
+    {
+      "name": "messages_unavailable_title",
+      "value": "الرسائل غير متاحة"
+    },
+    {
+      "name": "messages_unavailable_message",
+      "value": "تعذّر قراءة صندوق الوارد لهذا الحساب. حدّث الصفحة، أو افتح x.com/messages مرة واحدة."
+    },
+    {
+      "name": "home_signed_out_title",
+      "value": "لم تسجّل الدخول"
+    },
+    {
+      "name": "home_signed_out_message",
+      "value": "سجّل الدخول إلى x.com وسيظهر خطّك الزمني هنا."
+    },
+    {
+      "name": "home_unavailable_title",
+      "value": "الصفحة الرئيسية غير متاحة"
+    },
+    {
+      "name": "home_unavailable_message",
+      "value": "تعذّر قراءة الخط الزمني. اسحب للتحديث."
+    },
+    {
+      "name": "home_empty_title",
+      "value": "لا توجد منشورات بعد"
+    },
+    {
+      "name": "home_empty_message",
+      "value": "تظهر هنا منشورات من تتابعهم."
+    },
+    {
+      "name": "notif_signed_out_title",
+      "value": "لم تسجّل الدخول"
+    },
+    {
+      "name": "notif_signed_out_message",
+      "value": "سجّل الدخول إلى x.com وستظهر إشعاراتك هنا."
+    },
+    {
+      "name": "notif_unavailable_title",
+      "value": "الإشعارات غير متاحة"
+    },
+    {
+      "name": "notif_unavailable_message",
+      "value": "تعذّر قراءة الإشعارات. اسحب للتحديث."
+    },
+    {
+      "name": "notif_empty_title",
+      "value": "لا توجد إشعارات"
+    },
+    {
+      "name": "notif_empty_message",
+      "value": "تظهر هنا الإعجابات وإعادة النشر والمتابعات والإشارات."
+    },
+    {
+      "name": "notif_liked",
+      "value": "أعجب بمنشورك"
+    },
+    {
+      "name": "notif_reposted",
+      "value": "أعاد النشر"
+    },
+    {
+      "name": "notif_followed",
+      "value": "تابعك"
+    },
+    {
+      "name": "notif_replied",
+      "value": "ردّ"
+    },
+    {
+      "name": "notif_quoted",
+      "value": "اقتبس منشورك"
+    },
+    {
+      "name": "notif_mentioned",
+      "value": "ذكرك"
+    },
+    {
+      "name": "profile_signed_out_title",
+      "value": "لم تسجّل الدخول"
+    },
+    {
+      "name": "profile_signed_out_message",
+      "value": "سجّل الدخول لرؤية ملفك الشخصي هنا."
+    },
+    {
+      "name": "profile_unavailable_title",
+      "value": "الملف الشخصي غير متاح"
+    },
+    {
+      "name": "profile_unavailable_message",
+      "value": "تعذّر قراءة هذا الملف. اسحب للتحديث."
+    },
+    {
+      "name": "profile_no_posts",
+      "value": "لا توجد منشورات بعد."
+    },
+    {
+      "name": "profile_edit",
+      "value": "تعديل الملف"
+    },
+    {
+      "name": "profile_following",
+      "value": "يتابع"
+    },
+    {
+      "name": "profile_followers",
+      "value": "المتابعون"
+    },
+    {
+      "name": "explore_signed_out_title",
+      "value": "لم تسجّل الدخول"
+    },
+    {
+      "name": "explore_signed_out_message",
+      "value": "سجّل الدخول لرؤية المواضيع الرائجة والبحث هنا."
+    },
+    {
+      "name": "explore_empty_title",
+      "value": "لا توجد مواضيع رائجة"
+    },
+    {
+      "name": "explore_empty_message",
+      "value": "تظهر المواضيع الرائجة هنا عندما يكون هناك ما يُتحدث عنه."
+    },
+    {
+      "name": "explore_trends_title",
+      "value": "المواضيع الرائجة"
+    },
+    {
+      "name": "explore_no_results_title",
+      "value": "لا توجد نتائج"
+    },
+    {
+      "name": "explore_no_results_message",
+      "value": "جرّب بحثًا مختلفًا."
+    },
+    {
+      "name": "post_reply",
+      "value": "رد"
+    },
+    {
+      "name": "post_repost",
+      "value": "إعادة نشر"
+    },
+    {
+      "name": "post_like",
+      "value": "إعجاب"
+    },
+    {
+      "name": "post_action_failed",
+      "value": "تعذّر ذلك. حاول مرة أخرى."
+    },
+    {
+      "name": "messages_loading_thread",
+      "value": "جارٍ تحميل الرسائل…"
+    },
+    {
+      "name": "messages_send_unavailable",
+      "value": "تعذّر الإرسال. حاول مرة أخرى."
+    },
+    {
+      "name": "signin_title",
+      "value": "مرحبًا بك في OpenTwit"
+    },
+    {
+      "name": "signin_message",
+      "value": "سجّل الدخول بحساب X لتصفّح الخط الزمني وتلقّي الإشعارات ومراسلة الآخرين وعرض ملفك — كل ذلك بتجربة أصلية."
+    },
+    {
+      "name": "signin_benefit_home",
+      "value": "خطّك الزمني"
+    },
+    {
+      "name": "signin_benefit_home_desc",
+      "value": "لك والمتابَعة، مباشرة"
+    },
+    {
+      "name": "signin_benefit_notif",
+      "value": "إشعارات فورية"
+    },
+    {
+      "name": "signin_benefit_notif_desc",
+      "value": "الإعجابات وإعادة النشر والمتابعات والإشارات"
+    },
+    {
+      "name": "signin_benefit_messages",
+      "value": "محادثات حقيقية"
+    },
+    {
+      "name": "signin_benefit_messages_desc",
+      "value": "صندوق الرسائل المباشرة لحظة بلحظة"
+    },
+    {
+      "name": "signin_button",
+      "value": "تسجيل الدخول"
+    },
+    {
+      "name": "signin_note",
+      "value": "يتم تسجيل الدخول عبر x.com وتبقى الجلسة على هذا الجهاز."
     }
   ]
 }

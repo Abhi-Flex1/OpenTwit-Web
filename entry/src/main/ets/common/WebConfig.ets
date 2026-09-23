@@ -1,6 +1,7 @@
 // OpenTwit-Web: full Twitter web endpoints + native HarmonyOS shell.
-// Single-source routes for the WebView container. Full x.com parity:
-// timeline, explore, notifications, DMs, profile, login — all via web.
+// Single-source routes for the WebView container. The web session still loads
+// the Messages route for cookies and unread state, while the visible Messages
+// inbox/detail/composer are ArkUI in NativeMessages.ets.
 
 export const TWITTER_BASE: string = 'https://x.com';
 export const TWITTER_HOME: string = 'https://x.com/home';

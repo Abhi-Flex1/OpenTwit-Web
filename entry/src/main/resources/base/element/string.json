@@ -151,6 +151,314 @@
     {
       "name": "post",
       "value": "Post"
+    },
+    {
+      "name": "messages_chat_title",
+      "value": "Chat"
+    },
+    {
+      "name": "messages_filter_all",
+      "value": "All"
+    },
+    {
+      "name": "messages_search_placeholder",
+      "value": "Search conversations"
+    },
+    {
+      "name": "messages_new_message",
+      "value": "New message"
+    },
+    {
+      "name": "messages_empty_title",
+      "value": "No conversations"
+    },
+    {
+      "name": "messages_empty_message",
+      "value": "Start a conversation with someone."
+    },
+    {
+      "name": "messages_composer_placeholder",
+      "value": "Message"
+    },
+    {
+      "name": "messages_add_attachment",
+      "value": "Add attachment"
+    },
+    {
+      "name": "messages_voice",
+      "value": "Voice message"
+    },
+    {
+      "name": "messages_send",
+      "value": "Send message"
+    },
+    {
+      "name": "messages_call",
+      "value": "Call"
+    },
+    {
+      "name": "messages_video",
+      "value": "Video call"
+    },
+    {
+      "name": "messages_more",
+      "value": "More options"
+    },
+    {
+      "name": "messages_attachment_selected",
+      "value": "Attachment ready"
+    },
+    {
+      "name": "messages_filter_unread",
+      "value": "Unread"
+    },
+    {
+      "name": "messages_filter_title",
+      "value": "Filter conversations"
+    },
+    {
+      "name": "messages_mute",
+      "value": "Mute"
+    },
+    {
+      "name": "messages_unmute",
+      "value": "Unmute"
+    },
+    {
+      "name": "messages_muted",
+      "value": "Muted"
+    },
+    {
+      "name": "messages_unmuted",
+      "value": "Unmuted"
+    },
+    {
+      "name": "messages_archive",
+      "value": "Archive"
+    },
+    {
+      "name": "messages_archived",
+      "value": "Archived"
+    },
+    {
+      "name": "messages_emoji",
+      "value": "Emoji"
+    },
+    {
+      "name": "messages_remove_attachment",
+      "value": "Remove attachment"
+    },
+    {
+      "name": "messages_signed_out_title",
+      "value": "You're signed out"
+    },
+    {
+      "name": "messages_signed_out_message",
+      "value": "Sign in to x.com from the Home tab and your conversations appear here."
+    },
+    {
+      "name": "messages_unavailable_title",
+      "value": "Messages unavailable"
+    },
+    {
+      "name": "messages_unavailable_message",
+      "value": "This account's inbox could not be read. Refresh, or open x.com/messages once."
+    },
+    {
+      "name": "home_signed_out_title",
+      "value": "You're signed out"
+    },
+    {
+      "name": "home_signed_out_message",
+      "value": "Sign in to x.com and your timeline appears here."
+    },
+    {
+      "name": "home_unavailable_title",
+      "value": "Home unavailable"
+    },
+    {
+      "name": "home_unavailable_message",
+      "value": "This timeline could not be read. Pull to refresh."
+    },
+    {
+      "name": "home_empty_title",
+      "value": "No posts yet"
+    },
+    {
+      "name": "home_empty_message",
+      "value": "Posts from people you follow show up here."
+    },
+    {
+      "name": "notif_signed_out_title",
+      "value": "You're signed out"
+    },
+    {
+      "name": "notif_signed_out_message",
+      "value": "Sign in to x.com and your notifications appear here."
+    },
+    {
+      "name": "notif_unavailable_title",
+      "value": "Notifications unavailable"
+    },
+    {
+      "name": "notif_unavailable_message",
+      "value": "These could not be read. Pull to refresh."
+    },
+    {
+      "name": "notif_empty_title",
+      "value": "No notifications"
+    },
+    {
+      "name": "notif_empty_message",
+      "value": "Likes, reposts, follows and mentions show up here."
+    },
+    {
+      "name": "notif_liked",
+      "value": "liked your post"
+    },
+    {
+      "name": "notif_reposted",
+      "value": "reposted"
+    },
+    {
+      "name": "notif_followed",
+      "value": "followed you"
+    },
+    {
+      "name": "notif_replied",
+      "value": "replied"
+    },
+    {
+      "name": "notif_quoted",
+      "value": "quoted your post"
+    },
+    {
+      "name": "notif_mentioned",
+      "value": "mentioned you"
+    },
+    {
+      "name": "profile_signed_out_title",
+      "value": "You're signed out"
+    },
+    {
+      "name": "profile_signed_out_message",
+      "value": "Sign in to see your profile here."
+    },
+    {
+      "name": "profile_unavailable_title",
+      "value": "Profile unavailable"
+    },
+    {
+      "name": "profile_unavailable_message",
+      "value": "This profile could not be read. Pull to refresh."
+    },
+    {
+      "name": "profile_no_posts",
+      "value": "No posts yet."
+    },
+    {
+      "name": "profile_edit",
+      "value": "Edit profile"
+    },
+    {
+      "name": "profile_following",
+      "value": "Following"
+    },
+    {
+      "name": "profile_followers",
+      "value": "Followers"
+    },
+    {
+      "name": "explore_signed_out_title",
+      "value": "You're signed out"
+    },
+    {
+      "name": "explore_signed_out_message",
+      "value": "Sign in to see trends and search here."
+    },
+    {
+      "name": "explore_empty_title",
+      "value": "No trends"
+    },
+    {
+      "name": "explore_empty_message",
+      "value": "Trends show up here when there's something to talk about."
+    },
+    {
+      "name": "explore_trends_title",
+      "value": "Trends"
+    },
+    {
+      "name": "explore_no_results_title",
+      "value": "No results"
+    },
+    {
+      "name": "explore_no_results_message",
+      "value": "Try a different search."
+    },
+    {
+      "name": "post_reply",
+      "value": "Reply"
+    },
+    {
+      "name": "post_repost",
+      "value": "Repost"
+    },
+    {
+      "name": "post_like",
+      "value": "Like"
+    },
+    {
+      "name": "post_action_failed",
+      "value": "That didn't work. Try again."
+    },
+    {
+      "name": "messages_loading_thread",
+      "value": "Loading messages…"
+    },
+    {
+      "name": "messages_send_unavailable",
+      "value": "Couldn't send. Try again."
+    },
+    {
+      "name": "signin_title",
+      "value": "Welcome to OpenTwit"
+    },
+    {
+      "name": "signin_message",
+      "value": "Sign in with your X account to browse your timeline, catch notifications, message people and see your profile — all of it native."
+    },
+    {
+      "name": "signin_benefit_home",
+      "value": "Your timeline"
+    },
+    {
+      "name": "signin_benefit_home_desc",
+      "value": "For you and Following, live"
+    },
+    {
+      "name": "signin_benefit_notif",
+      "value": "Stay notified"
+    },
+    {
+      "name": "signin_benefit_notif_desc",
+      "value": "Likes, reposts, follows and mentions"
+    },
+    {
+      "name": "signin_benefit_messages",
+      "value": "Real conversations"
+    },
+    {
+      "name": "signin_benefit_messages_desc",
+      "value": "Your DM inbox, in real time"
+    },
+    {
+      "name": "signin_button",
+      "value": "Sign in"
+    },
+    {
+      "name": "signin_note",
+      "value": "Sign-in runs on x.com — your session stays on this device."
     }
   ]
 }

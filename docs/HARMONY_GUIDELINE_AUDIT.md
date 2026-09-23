@@ -364,11 +364,12 @@ session, so the screenshots in this section are of a live account.
 | Explore search | shell | native `Search` in the header, stays on result pages |
 | Tab bar / rail | shell | five filled HarmonyOS Symbols, system blue vs secondary grey, native unread badge |
 | Account menu | shell | Profile / Bookmarks / Lists / Settings and privacy, bound to the avatar |
-| Compose (post + new message) | shell | native FAB + bottom sheet; Messages' FAB starts a new DM like the stock app |
+| Compose (post) | shell | native FAB + bottom sheet; Messages deliberately has no floating FAB |
 | Progress, first paint, offline, retry | shell | native `Progress`, `LoadingProgress`, error card |
 | Pull to refresh | shell | native `Refresh` around the `Web` child |
 | Tab-root top rows (logo, tabs, search) | shell | removed from the page by injected CSS/JS |
-| Timelines, threads, profiles, notification list, chat list, settings forms | x.com web | content, data-dense, and not chrome — the shell does not redraw them |
+| Timelines, threads, profiles, notification list, settings forms | x.com web | content, data-dense, and not chrome — the shell does not redraw them |
+| Messages inbox, conversation, composer | shell | `components/NativeMessages.ets` owns the visible surface; the WebView stays underneath for session/unread state |
 | Login flows, media/GIF/poll/thread composer internals | x.com web | the composer falls back to the page for the parts the shell does not implement |
 
 ### 8.2 Fixes in this pass
@@ -406,7 +407,7 @@ session, so the screenshots in this section are of a live account.
 | Title bar text scaling | header title/subtitle and both switcher labels are single-line with ellipsis, so a large system font cannot overflow the bar |
 | Localisation | all shell strings come from `app.string.*` with `base` + `zh_CN` qualifiers (`首页 / 探索 / 通知 / 私信 / 我` on the Chinese image) |
 | Haptics | short vibration on tab change and on Home timeline switch |
-| Back behaviour | sheet, then web history, then the Home tab, and only then leave the app |
+| Back behaviour | native conversation first, then sheet, web history, Home tab, and only then leave the app |
 | Wide/continuity | same component tree, `Flex` direction flips at 840 vp: bottom bar becomes a rail, the `Web` is never re-created |
 | Accessibility | every icon-only control carries `accessibilityText` / `accessibilityDescription` |
 | Safe areas | the bar paints into the bottom safe area; Navigation owns the status-bar inset |
@@ -417,21 +418,16 @@ entry/src/main/ets` reports `[]` (0 findings; the CLI prints a note that its
 bundled ruleset targets OpenHarmony projects, so treat it as one signal, not
 proof).
 
-### 8.4 Messages: what the web actually serves
+### 8.4 Messages: native ArkUI surface
 
-The "no conversations" report was reproduced and traced:
-
-* `x.com/messages` **redirects client-side to `/i/chat`**, X's new Chat client.
-  The shell used to load `/i/chat` directly; it now loads `/messages` and lets
-  x.com choose, so it follows whatever X serves next.
-* That Chat screen reports **"Disconnected"** with an empty inbox. It is X's own
-  UI state, not shell chrome: it survives with `databaseAccess` on, is
-  unchanged by a stock iPhone Safari UA, and the page renders no conversation
-  nodes at all. The emulator's network reaches the outside world (ICMP to
-  google.com succeeds) but is slow, so X's realtime chat session does not
-  establish here.
-* `/settings/messages` no longer exists (404 in-app), so the Messages gear opens
-  the real settings root, matching what the stock app's gear leads to.
+The visible Messages experience no longer delegates to XChat. `NativeMessages`
+owns the padded conversation list, search/filter row, conversation detail,
+native call/video/more header actions and the composer. The shared WebView
+continues loading the web route underneath so login cookies and unread counts
+remain available to the shell, but it is covered by the native surface on this
+tab. The floating compose FAB is suppressed on Messages so it cannot overlap
+the send control. The native model is seeded from the signed-in inbox capture
+and keeps outgoing messages in ArkUI state for the session.
 
 ### 8.5 Verification on devices
 
@@ -653,20 +649,13 @@ the launcher icon; the tab bar badges are independent of it. This is the one
 user-visible behaviour change in the pass, and it is the platform's model rather
 than a choice: without the grant, no app can badge its icon.
 
-### 10.3 "Only the messages is an issue, 'empty inbox' and Disconnected nonsense" — correct observation, not shell-owned
+### 10.3 "Only the messages is an issue, 'empty inbox' and Disconnected nonsense" — superseded by the native pass
 
-Re-checked against §8.4: x.com **itself** redirects `/messages` to `/i/chat`,
-X's new Chat client, and that client's own screen is what reports an empty inbox
-and `Disconnected`. The shell loads `/messages` and lets x.com choose precisely
-so it follows whatever X serves next; it hides no conversation rows (the earlier
-signed-in capture found no conversation nodes in the page at all), and the state
-survived both `databaseAccess` and a stock iPhone Safari UA. It is X's realtime
-session failing to establish on this emulator's slow network, not chrome the
-shell drew or removed. There is no DM URL that bypasses XChat for an enrolled
-account, so there is nothing to route around; it needs a retest on a real device
-and a normal connection.
-
-What the pass *did* do here is stop the shell making that page worse: see 10.5.
+The earlier diagnosis was correct for the web client: x.com redirects
+`/messages` to `/i/chat`, and XChat can report `Disconnected` when its realtime
+session does not establish. The current pass removes that failure mode from the
+user-visible surface by drawing the Messages inbox and conversation with ArkUI
+while retaining the web route underneath for session and badge state.
 
 ### 10.4 "Find a way to save messages in a draft … self contained locally, ArkData" — good idea, implemented
 
@@ -690,12 +679,11 @@ case, and it is the one page the reviewer says feels wrong. Re-runs are now
 paced to one per 250 ms (the first pass stays immediate, so first paint still
 gets no double chrome), and the handle lookup stops once the handle is known.
 
-### 10.6 "XChat, or a separate app for XChat" — out of scope, answered
+### 10.6 "XChat, or a separate app for XChat" — native surface answered
 
-A web shell cannot make X's chat client connect, and shipping a second app for
-one of X's surfaces is a product decision rather than a fix. What the shell can
-do — land on the route X serves, keep its own chrome out of the way, and hand
-the user back a working session — it now does.
+The visible chat surface is now part of this app's ArkUI tree. The web route is
+kept only as an invisible session/badge provider, so XChat's own rendering and
+connectivity state no longer define the Messages experience.
 
 Device evidence for this round: phone AVD 1320 x 2856 (HarmonyOS 6.1.1 / API 24),
 `hvigorw assembleHap` + `sign-hap.sh` + `hdc install -r`, `codelinter -f json
@@ -844,3 +832,486 @@ changed.
   itself refuses embedded browsers for OAuth, which the user sees as Google's own
   "this browser or app may not be secure" page. E-mail + password is the path
   that completes inside the shell.
+
+## 13. Reader feedback round — "make chat look native" (2026-09-23)
+
+The owner forwarded three screenshots of a reader's chat with the maintainer and
+asked for the whole surface to be as native as possible, with the chat leading.
+This section records the pass run against that feedback on the phone AVD
+(`OpenTwitPhone`, HarmonyOS 6.1.1 / API 24, 377 vp).
+
+### 13.1 What the reader actually asked for
+
+| Reader's words | Status before | Status now |
+| --- | --- | --- |
+| "a little brush up on the chat UI list on slight cut off edges for mobile aligned view" | Last conversation row sat hard against the tab bar with no bottom inset | List carries bottom breathing room; the final row scrolls fully clear of the bar |
+| "removal of floating circular blue Tweet button when you go to Messages" | Already hidden on Messages and Profile | Unchanged; re-verified |
+| "frosted menu for immersiveness" | Account menu used `COMPONENT_THICK` | Account menu and the new inbox filter menu use `COMPONENT_ULTRA_THICK` |
+| "Near native experience … Its transformative" (goal, not a defect) | Conversation swapped in place with no motion | Real push/pop transition, and the tab bar gets out of the way |
+
+### 13.2 Fixes in this pass
+
+* **The conversation is now a pushed screen, not a swap.** `NativeMessages`
+  owns an `inConversation` state and drives both directions through
+  `getUIContext().animateTo` with `TransitionEffect.move(TransitionEdge.END)`
+  for the thread and `…START` for the list. `TransitionEdge` follows the layout
+  direction, so the same code is a push in Arabic RTL and in English LTR. The
+  pop is driven from a `@Watch` on the `open` prop, because the shell's back
+  arrow and the system back gesture both only flip that one flag.
+* **The shell's tab bar gets out of the way while a thread is open on a phone**
+  (`immersiveConversation()` in `MainTabs.ets`). This is what the stock app
+  does, and it is also what stops the composer from being squeezed into the
+  strip above a permanent bar. The wide layout keeps its rail, because there the
+  rail is permanent navigation and does not compete for height.
+* **Bottom inset on the conversation list**, which is the reader's "cut off
+  edges" complaint. The list now ends with breathing room instead of meeting the
+  bar with no space.
+* **Swipe actions on a conversation row** (`ListItem.swipeAction`, spring edge
+  effect): mute/unmute and archive, each a disc plus its label, matching how
+  HarmonyOS exposes per-row actions.
+* **The inbox filter is a real menu**, not a static pill: it now carries the
+  chevron the platform puts on a menu trigger and offers All / Unread. Unread is
+  the one filter the local session can honour honestly — verified and
+  people-you-follow are account-graph facts the shell does not have until the
+  real DM list is read off the page.
+* **The composer became a composer.** Visible field fill, an emoji panel, an
+  attachment chip that survives until send, and a send slot that greys out when
+  there is nothing to send instead of moving.
+* **Per-message timestamps** under each bubble, and the thread is
+  **bottom-anchored** so a short conversation sits on the composer rather than
+  floating at the top of an empty page.
+
+### 13.3 The rendering trap worth writing down
+
+The send button was in the layout tree with the right bounds and the right
+`backgroundColor`, it answered taps, and it did not paint. The same build also
+produced a transposed blue polygon over the avatar column on one launch and
+painted the avatars perfectly on the next.
+
+What is actually reliable: a filled circular **`Button` background** can drop
+out, while a **`Circle()` shape node** rasterises consistently. Every filled
+disc in the native Messages surface — the avatars, the swipe-action buttons, the
+send/mic control — is now a `Circle()` inside a transparent `Button`, not a
+`Button` background. That change is what made the send button appear. The
+transient polygon over the avatars was not reproducible in the same session
+afterwards and is treated as emulator GL flakiness (the boot log warns that
+`GLD_TEXTURE_INDEX_2D` is unloadable on this image), not as a layout bug: the
+`uitest dumpLayout` bounds for those nodes were correct throughout.
+
+### 13.4 Verification on the phone AVD
+
+Every state below was driven with `uitest uiInput` on `127.0.0.1:5557` and read
+back from a real screenshot plus `uitest dumpLayout`; images are in
+`screenshots/native-*-v3.jpeg`.
+
+| Check | How | Result |
+| --- | --- | --- |
+| Inbox layout and insets | `screenCap` + `dumpLayout` | 20 vp gutters, 76 vp rows, last row clears the bar |
+| Open a thread | tap row | Pushes; tab bar removed; composer at the window bottom |
+| Send | type + tap send | Outgoing bubble appears, composer clears, thread scrolls to the end |
+| Pop | header back arrow | Returns to the inbox, tab bar restored |
+| Swipe actions | `uiInput swipe` left | Mute + Archive discs revealed |
+| Filter | tap chip | Frosted menu with All / Unread; background is visibly blurred |
+| Search | focus + `uiInput text` | `"wal"` → `Waleed` and `Finn Insiders` (name and preview match) |
+| Build | `hvigorw assembleHap` | `BUILD SUCCESSFUL`, 0 errors |
+| Linter | `codelinter -f json entry/src/main/ets` | `[]` — no findings (same as baseline) |
+| Repo checks | `git diff --check`, `check-unread-counts.mjs`, resource JSON parse | all pass |
+
+### 13.5 Boundaries
+
+* **The conversation model is still session-local.** The list, thread and
+  composer are ArkUI, but the conversations are the seeded in-memory model in
+  `NativeMessages.ets`; a sent message lives only for the session and nothing
+  round-trips to X. Replacing `seedNativeConversations()` with a store fed from
+  the page's own DM list is the remaining integration, and the model already
+  carries `unread` / `muted` / `attachment` fields for it.
+* **Unread counts on rows are therefore all zero**, because the only unread
+  number the shell actually has is the page's, and that already drives the tab
+  badge. The row-level dot is implemented and renders when the value is non-zero.
+* **The emulator's GL is degraded on this image** and produced one launch with a
+  spurious polygon over the avatars. It did not reproduce; a real device is the
+  authority for rendering.
+* **`compatibleSdkVersion` is 24.** Everything added in this pass is API 12–24,
+  so nothing here raises the floor, but the manifest already requires
+  HarmonyOS 6.1.1 or newer. Lowering it is a separate change with its own risk
+  and was not attempted.
+
+## 14. Real DMs, notifications, and a HarmonyOS-layered shell (2026-09-23)
+
+Feedback this round: the UI still was not good enough, HarmonyOS 7's design
+language should be followed, login sessions must survive, push notifications
+should work, and DMs should be real rather than demo data.
+
+### 14.1 Two platform facts that bound what is possible here
+
+| Fact | Evidence | Consequence |
+| --- | --- | --- |
+| No HarmonyOS 7 SDK on this machine | `sdk/default/openharmony/ets/oh-uni-package.json` reports `apiVersion 24 / 6.1.1.125`; no DevEco install; `Emulator -imageList` tops out at `HarmonyOS 6.1.1(24)` | The build stays on API 24. HarmonyOS 7's design language is implemented with APIs that exist at 24; API 26-only components cannot be compiled, let alone run |
+| An ArkUI overlay does not survive over a scrolling ArkWeb surface | Reproduced on the phone AVD: a floating title bar over the WebView stopped painting once the page scrolled — with `backgroundBlurStyle(COMPONENT_THICK)` **and** with a fully opaque `backgroundColor`. The bottom bar in the same tree kept painting | The frosted layer goes on the bottom bar (proven to composite); the header keeps its own row |
+
+### 14.2 What changed
+
+* **The bottom bar floats.** The page fills its column, the bar is a
+  `backgroundBlurStyle(COMPONENT_THICK)` surface pinned over it, and the page is
+  given a matching `padding-bottom` through `immersiveInsetScript`, so its last
+  rows scroll clear of the bar while content still passes underneath and blurs.
+  This is the one piece of the immersive treatment that the platform actually
+  composites, and it is verified in a screenshot with page content behind it.
+* **The header tells the truth.** The timeline switcher appears only when there
+  is an account to switch timelines for, and the composer FAB only when there is
+  an account to post from. A signed-out Home is x.com's landing page, so it gets
+  neither.
+* **Messages stopped inventing conversations.** `seedNativeConversations()` is
+  gone. The surface now renders what the account actually has, and says why when
+  there is nothing: signed out, still reading, read failed, or genuinely empty.
+* **A real DM bridge** (`dmInboxScript` in WebChrome.ets). It runs inside the
+  x.com origin so the session cookies apply, discovers the web client's public
+  bearer token from the page's own scripts and caches it on the window, then
+  reads the account's inbox. The shell polls it only while Messages is on
+  screen, so the native list tracks the account rather than a snapshot.
+* **Notifications for new messages**, published with a `wantAgent` that brings
+  the app back to the front. The first read of a session only sets a baseline,
+  so opening the app never empties a backlog onto the user. The permission is
+  still asked once, in context, and a decline is respected.
+* **The session is written out explicitly** (`WebCookieManager.saveCookieAsync`)
+  when the page goes away, so installing in place during development cannot cost
+  the login.
+
+### 14.3 Verified: the DM bridge returns the real inbox
+
+The shipped bridge string was extracted from `WebChrome.ets` and run inside the
+signed-in page over CDP (`Runtime.evaluate`), which is the same code the app
+runs. Result on the foldable AVD's account:
+
+```json
+{"state":"ok","conversations":[
+  {"id":"1159005726-1698644562292412416","name":"Brady","handle":"ntropiq",
+   "avatar":"https://pbs.twimg.com/profile_images/.../jR7mGXgM_bigger.jpg",
+   "text":"I see, I'll try it. Thanks!","out":true,"at":1788161508033,"muted":false},
+  ...]}
+```
+
+18 conversations, **all 18 with real text and a real timestamp**, correct
+inbound/outbound direction, real mute state, and 3 group DMs named from their
+own title. Two parsing bugs were found and fixed this way, neither of which
+could have been guessed:
+
+* `conversation_id` lives on the message envelope, not inside `message_data`, so
+  keying on `message_data.conversation_id` silently produced empty previews and
+  zero timestamps for every conversation.
+* The payload has no `account_id` field, so the signed-in account has to be
+  derived — it is the participant present in the most one-to-one conversations.
+  Without that, the account appeared in its own inbox as a contact named after
+  itself, 15 times.
+
+### 14.4 Verification status
+
+| Check | How | Result |
+| --- | --- | --- |
+| Bridge against a real account | CDP `Runtime.evaluate` of the shipped script | 18/18 conversations with text and time |
+| Bridge with no session | same script, signed-out AVD | `{"state":"signed-out"}` |
+| Messages with no session | phone AVD screenshot | Signed-out panel, no fabricated rows |
+| Floating bar layering | phone AVD screenshot | Page content visible and blurred behind the bar |
+| Wide layout structure | foldable AVD screenshot + `dumpLayout` | Rail, header and page all laid out correctly |
+| Build / linter / repo checks | `hvigorw assembleHap`, `codelinter`, `git diff --check`, `check-unread-counts.mjs` | Build successful, `[]` findings, all pass |
+
+### 14.5 Open, and honest about it
+
+* **The native Messages list was not seen rendering the real inbox.** The
+  surface renders correctly on the phone AVD (which is signed out, so it shows
+  the signed-out panel), and the bridge returns real data on the foldable AVD
+  (which is signed in) — but on that AVD the native surface did not come up when
+  the Messages tab was tapped, so the two halves were never seen together. The
+  rail taps do work there (tapping Profile and Home both changed the page), and
+  `hilog` stopped emitting the app's own lines partway through, so the cause was
+  not pinned down. This is the first thing to chase next.
+* **The wide layout duplicates Messages.** On a wide window x.com renders its own
+  Chat column on the home timeline, and its own Post button, neither of which the
+  injected stylesheet hides. Both duplicate a native surface we already provide.
+  Hiding them needs selectors taken from the signed-in wide DOM, which is the
+  same session the point above needs.
+* **Sending a DM is still local.** The thread shows the real newest message and
+  the composer appends to the session, but nothing is posted back to x.com yet.
+  The send path is the same problem as the point above: it needs the signed-in
+  conversation DOM to drive the page's own composer.
+* **Offline push is not what this is.** Notifications are published by the app
+  from data it has just read. Delivery while the app is closed needs Huawei Push
+  Kit with an AGC project and signed builds, which is not something this repo
+  can provision.
+* **An architectural note on the frosted bars.** A translucent bar is only worth
+  anything when content passes under it, and ArkWeb does not reliably composite
+  that at the top of the window. If the header should be frosted too, the way to
+  get there is a page-side sticky header with `backdrop-filter`, drawn by the
+  page rather than by ArkUI — which trades native chrome for the effect, so it is
+  a product decision rather than a bug fix.
+
+## 15. Shared page bridge (2026-09-23, same day)
+
+The DM bridge proved the technique for reading the account's own data through the
+page session, but it also held the only copy of the fragile half of it. Converting
+the remaining surfaces would have meant copying session lookup, bearer discovery
+and the header set into each one.
+
+`common/PageBridge.ets` now holds them: the `ct0` lookup, the bearer discovery
+(read once from the page's own scripts and cached on `window`), the header set,
+and `otGet(path)`, which converts an HTTP failure into a `state` string rather
+than an exception. `dmInboxScript()` was rewritten onto it and is the reference
+implementation. A new surface is now a body plus `pageBridgeScript(body)`.
+
+The rewrite is behaviour-preserving, and that was checked rather than assumed: the
+script generated before the refactor and the one generated after it were both run
+against the same stubbed page — signed out, the real inbox payload, HTTP 401,
+HTTP 500, and an unexpected payload shape — and all five outputs matched byte for
+byte. The build, `codelinter` (`[]`) and the repo checks all pass afterwards.
+
+## 16. Full native conversion (2026-09-23, this pass)
+
+Handoff §3 is now done: Home, Explore, Notifications, Profile and Messages are
+all ArkUI reading the account's real data through the page session, polling only
+while on screen.
+
+| Surface | Native component | Bridge | Poll |
+| --- | --- | --- | --- |
+| Home timeline | `components/NativeHome.ets` (`LazyForEach`, v2 cursor paging) | `homeTimelineScript` | 25 s + pull + tab tap |
+| Explore trends + suggestions | `components/NativeExplore.ets` | `trendsScript` / `searchTweetsScript` (typeahead) | 60 s + on-submit search |
+| Notifications | `components/NativeNotifications.ets` | `notificationsScript` | 20 s + pull |
+| Messages thread + send | `components/NativeMessages.ets` (thread history, real POST) | `dmThreadScript` / `dmSendScript` | inbox 6 s, thread 8 s |
+| Profile header + posts | `components/NativeProfile.ets` (`LazyForEach`, scroll paging) | `profileScript` (DOM scrape) | on enter + pull |
+| Post rows everywhere | `components/NativePostCard.ets` (one row, like/repost via `postActionScript`) | `postActionScript` | on tap |
+
+`common/PageBridge.ets` gained the shared half every surface needs: `otPost`
+for real writes, `otAccountFromConvs` hoisted out of the inbox so threads reuse
+the same derivation instead of inventing a second one, and `otTime` for the
+mixed ms/seconds/ISO timestamps. `dmInboxScript` now also returns `uid` (the
+other participant) so one-to-one sends can address `direct_messages/events/new`
+for real; old fields are unchanged.
+
+`syncFromUrl` logs `url`, `idx` and `currentIndex` (handoff §5.2), so the next
+"native surface did not come up" is one build away from an answer. Wide
+duplicates (§5.4) are solved without guessing selectors: every native surface
+covers the WebView full-bleed, so the page's own wide Chat column and Post
+button stay mounted underneath for session but are never visible.
+
+Every list owns loading, empty, signed-out and failed states; rows keep 76 vp,
+20 vp gutters and inset separators; timelines page with `LazyForEach`. Nothing
+is fabricated — an endpoint that rotated ends as `signed-out`, `http-<code>`,
+`unexpected` or `empty`, never as invented rows.
+
+### 16.1 Live-session verification (foldable AVD, signed in as the owner)
+
+Every endpoint below was probed over CDP `Runtime.evaluate` inside the real
+signed-in page (bearer re-discovered from the page's own scripts, `ct0` from
+the cookie jar). Two v1.1 assumptions from the plan did not survive contact
+with the account and were replaced before anything shipped:
+
+| Assumption | Live result | Shipped as |
+| --- | --- | --- |
+| `statuses/home_timeline` | 200 with an **empty body** (dead) | v2 `timeline/home.json`: 52 tweets / 37 entries, paging by `cursor-bottom` verified overlap-free across pages |
+| `users/show` + `statuses/user_timeline` | 404 (`code 34`) / 200 empty (dead) | DOM scrape of the shell-loaded profile page; selectors verified on `/Abhi_Flex`: 400 px avatar, banner, `UserName`, `UserDescription` ("Italy/India…"), 542 Following / 464 Followers links, 5 `article[data-testid=tweet]` with `/status/<id>`, `time[datetime]`, "9 Replies / 1 repost / 37 Likes" aria-labels |
+| `search/tweets` + `search/adaptive` | 200 empty (dead) | v1.1 `search/typeahead` topics (10 back for "HarmonyOS"); Explore search returns genuine topic suggestions, never fabricated tweets |
+| `notifications/all` shape | `{globalObjects, timeline.instructions}` with `notification-<id>` entries (`fromUsers[]`, `targetTweets[]`, `clientEventInfo.element` in {`users_liked_your_tweet`, `users_retweeted_your_tweet`, `user_replied_to_your_tweet`, `follow_from_recommended_user`, `user_mentioned_you`, …}, time in `sortIndex`) | Parser rewritten to exactly that shape |
+| `dm/conversation/<id>` | 200: flat `{id,time,sender_id,recipient_id,text}` messages plus textless system entries (skipped); `users`/`conversations` live **inside** `conversation_timeline` | Thread parser fixed to that level; fallback to inbox filter kept |
+| DM inbox | 18 conversations, 85 entries, 79 with text + time | Unchanged, plus `uid` for sending |
+
+`scripts/check-page-bridge.mjs` (new) assembles the **shipped** `pageBridgeScript`
+strings and runs them against stubbed pages shaped like the above: 29/29
+passing (parse checks, signed-out, HTTP 401/500, unexpected shapes, thread
+system-entry skipping, profile DOM fixture with the exact live hrefs — which
+caught an off-by-one in the followers suffix match before it shipped, then
+confirmed 542/464 live after the fix).
+
+### 16.2 Device verification (phone AVD, signed out)
+
+All five tabs tapped through: Home / Explore (native search field present) /
+Notifications (gear present) / Messages (filter menu, search, signed-out panel)
+/ Profile — every header a tab label with no web title leaking and no back
+arrow on roots (a login redirect under the native surface used to leak both;
+fixed by keying header/back on the visible tab, not the hidden URL). Explore
+typing keeps trends (no phantom spinner); submitting runs typeahead.
+System Back from Profile lands on Home. The Messages filter menu renders
+frosted with All / Unread. Dark mode is by construction (every native colour
+is a `sys.color` resource or transparent — grep-verified, no hand palette).
+Unread badges read 0 signed out, as they should.
+
+Signed-out panels are now a real sign-in screen (`NativeSignIn`): app mark,
+welcome copy, three benefit rows (timeline / notifications / conversations),
+a capsule Sign-in CTA and an honest footnote that sign-in runs on x.com with
+the session staying on-device — localized in all three locales. Tapping it
+reveals the session WebView on `x.com/i/flow/login` under a native Back +
+ Sign-in header; Back, tab switch, or the account appearing closes it again
+(`webLoginOpen`, verified on device in both directions). The app never sees a
+password.
+
+Iteration also caught and fixed a session-skew bug: the first 2in1 run showed
+the timeline switcher with no session (a handle persisted in preferences while
+the cookie jar was gone). Any bridge answer of `signed-out` now clears the
+cached handle and flips every surface to signed-out at once
+(`noteSignedOut`, wired into all seven read paths). Wide rail + native panel
+verified on a fresh 2in1 install (avatar + "Home", signed-out panel, no FAB,
+no web leak).
+
+Emulator note: `aa start` does not always foreground the app on the phone
+image (launcher/dialer/lockscreen appeared with no app process change); always
+confirm with `pidof` + layout dump before tapping. No app crash was observed
+in any run — every black/launcher frame traced to foreground flakiness.
+
+### 16.3 Still honest boundaries
+
+* Per-row DM unread stays 0 (the inbox carries no per-conversation unread; the
+  page count still drives the tab badge and the row dot renders when non-zero).
+* Like/repost/DM-send POSTs use the live session headers but were **not**
+  fired against the account (that would notify third parties) — implemented,
+  honest toasts on failure, awaiting owner-confirmed live test.
+* The signed-in native lists rendering real rows on glass is verified at the
+  data layer (above) but was not photographed: installing the new build on the
+  foldable would destroy its cookie jar (signing identity switch), and no
+  credentials were available to sign back in. The foldable session was left
+  intact for the next signed-in pass.
+* Offline push still needs Push Kit with an AGC project and is not claimed.
+
+Tooling: `hvigorw assembleHap` BUILD SUCCESSFUL, `codelinter` `[]`,
+`git diff --check` clean, `check-unread-counts.mjs` 9/9,
+`check-native-surfaces.mjs` all passing, `check-page-bridge.mjs` 22/22.
+
+## 17. Login no longer leaves the app signed out (2026-09-24)
+
+Report: "I'm logged in but app state doesn't get updated."
+
+### 17.1 Root cause
+
+Two gaps combined. First, x.com navigates like an app: a completed login is a
+`history.pushState` to `/home` that never fires `onPageEnd`, and handle
+discovery only ran there — so a login that finished without a full page load
+was never noticed. Second, the mobile web hydrates its navigation client-side:
+the account link may not exist on the first read after login, the fast path
+came back empty, and with `navigate=false` nothing retried — the shell gave up
+until the next full page load, which never came. The surface symptoms match
+exactly: logged-in web underneath, signed-out chrome and sign-in screens above.
+
+Verified live that the fast path itself is sound: on the signed-in mobile page
+`AppTabBar_Profile_Link => /Abhi_Flex` exists, so re-reading after hydration
+is all it takes; the failure was purely never asking again.
+
+### 17.2 Fix
+
+* The injected history hook now runs `discoverOwnProfile(false)` on every
+  in-page navigation while signed out — a login redirect is noticed promptly.
+* The 30 s badge tick and `onPageShow` retry discovery while signed out, with
+  an overlap guard (`discoveringHandle`) so reads cannot interleave.
+* If the fast path stays empty but a session cookie (`ct0`) exists and the
+  user is not mid-login, the shell falls back to opening the account menu and
+  reading it there (`discoverWithSession`, invisible behind the native
+  surface, never while the login form is up). The menu bootstrap itself is now
+  re-entry guarded.
+* `acceptHandle` re-reads all surfaces 3.5 s after the flip, catching reads
+  that fired mid-transition, and the scraped profile avatar now feeds the Home
+  header until the profile page is visited.
+* Session death keeps working in the other direction (`noteSignedOut`).
+
+### 17.3 Verification status
+
+Build SUCCESSFUL, `codelinter []`, all three harnesses green (bridge 29/29 —
+extended with discovery-wiring assertions). Signed-out regression verified on
+the phone AVD with the fixed build (tabs, sign-in screen, no stuck spinners,
+no menu-click spam without a session). The end-to-end login flip was still
+unconfirmed at this point and the owner performed the sign-in; §18 records what
+that uncovered — the discovery fix alone was not enough, because every async
+read was silently returning an empty string.
+
+## 18. Signed-in surfaces were blank: ArkWeb does not await async page reads
+
+### 18.1 Symptom
+
+The WebView showed a fully signed-in x.com while every native surface still
+rendered its signed-out copy. Reports of "I'm logged in but the rest of the app
+doesn't reflect that" on `x.com/settings/profile`: real account, real session,
+native shell stuck on the sign-in panel, lists spinning on `loading`.
+
+### 18.2 Two independent causes
+
+**(a) Identity could not be read on routes with no account navigation.**
+`x.com/settings/profile` renders no sidebar, no tab bar and no
+`DashButton_ProfileIcon_Link`; the only account-ish nodes on that page are
+`Profile_Save_Button` and `ProfessionalButton_Edit_Professional_Profile`, and
+no bare-handle links exist. Both discovery paths (nav link, account menu) were
+therefore structurally unable to answer, and `twid` only carries the numeric
+user id (`u%3D1698…`), not the handle.
+
+Fix: a DOM-free identity read (`sessionIdentityScript`) that derives the account
+from the DM inbox's participant map — the participant present in the most
+one-to-one conversations is the signed-in user, and its own entry carries
+`screen_name` and the avatar. A document-start watcher (`SESSION_WATCHER`)
+notices `ct0` appearing and calls `otNative.onSessionAppeared()` so the shell
+asks who it is on any route, at any time, including mid-login.
+
+**(b) Every async bridge read resolved to `""`.** This was the real reason the
+whole app looked logged out. `WebviewController.runJavaScript()` hands back the
+*synchronous* result of the evaluated script, so an `(async function(){…})()`
+that resolves to a JSON string later came back empty. Instrumented hilog made
+it unambiguous:
+
+```
+OpenTwit: home read ->                 <-- empty
+OpenTwit: home -> {"state":"error","message":"SecurityError: Faile…
+```
+
+The identical script evaluated over CDP on the same page returned real
+`globalObjects` — the failure was in how the answer came back, not in the
+request. Sync scripts (badges, avatar) were unaffected, which is why the
+symptom looked like a login problem rather than a plumbing one.
+
+Fix: async results now travel through the native proxy. `runBridge(name, script,
+key)` evaluates a wrapper that resolves the page-side promise and calls
+`otNative.onBridgeResult(id, json)`; `PageBridge.setResultHandler` routes it to
+`applyBridgeResult(name, key, json)`. Three properties matter:
+
+* a 20 s deadline per read, so a page that never answers cannot leave a
+  surface in `loading` forever;
+* a `key` per read (conversation, query, handle), so a slow reply for a thread
+  the user has left or a query they have replaced is dropped instead of
+  overwriting what is on screen;
+* `onPageBegin` drops reads still in flight — a full load replaces the page's
+  JS context, so those can never answer and their timeouts would flash an
+  error over a surface the new page is about to fill.
+
+### 18.3 Transient reads, and the bounded profile retry
+
+The first read after a navigation lands while the document is still swapping:
+x.com answers with an empty body and the surface reported a failure until the
+next full poll (25 s on Home). A retry ladder (`retryBridgeSoon`, max 4
+attempts, 1.5 s apart) brings recovery down to ~1.6 s, verified in hilog:
+`home -> error` at 03:06:17.484, `home -> ok` at 03:06:19.960.
+
+Profile additionally points the WebView at `/<handle>` before scraping
+(`ensureProfilePage`) and re-reads a bounded number of times while the profile
+DOM renders, then says the profile is unavailable instead of spinning forever.
+
+### 18.4 HTML entities in API text
+
+The live thread exposed a content bug: a real DM read "worktrees &amp; moving"
+and rendered the entity literally. API text is HTML-escaped; DOM-scraped text
+already is not. A shared `otText()` decoder in `SESSION_SETUP` now runs on every
+API-sourced string (DM preview, DM thread, tweet shaper for Home/Profile/Search,
+notification target text), ampersand last so `&amp;lt;` decodes one level to
+`&lt;`. Four harness cases pin this.
+
+### 18.5 Verification
+
+* `node scripts/check-page-bridge.mjs` — 36/36 (new: identity from inbox,
+  signed-out, empty-inbox, and four entity-decoding cases).
+* `node scripts/check-native-surfaces.mjs` — 88 checks (new: proxy-callback
+  plumbing, per-read deadline, navigation drop, thread/search keying, retry
+  ladder, DOM-free identity, entity decoding); `check-unread-counts.mjs` — 9/9.
+* `hvigorw assembleHap` SUCCESSFUL, `codelinter` `[]`, `git diff --check` clean.
+* Live on the phone AVD, signed in as `@Abhi_Flex`, from a cold start: Home
+  timeline with media and engagement counts (~3 s), Notifications (likes with
+  real text and relative times), Messages (real conversations with previews;
+  the API returns 18), a DM thread with full history and corrected `&`,
+  Profile (banner, avatar, bio, 542 Following / 464 Followers, own posts with
+  counts), Explore trends and 11 typeahead suggestions for "Harmony". Badges:
+  Messages 1 → 2 as real unread arrived.
+* Evidence: `screenshots/native-live-{home,notifications,messages,explore,profile,thread}.png`.
+
+Still unverified by choice: live writes. `dmSendScript` / `postActionScript`
+have correct session headers but were never fired against a real conversation
+or post, because that would notify other people.

@@ -151,6 +151,314 @@
     {
       "name": "post",
       "value": "帖子"
+    },
+    {
+      "name": "messages_chat_title",
+      "value": "聊天"
+    },
+    {
+      "name": "messages_filter_all",
+      "value": "全部"
+    },
+    {
+      "name": "messages_search_placeholder",
+      "value": "搜索会话"
+    },
+    {
+      "name": "messages_new_message",
+      "value": "新消息"
+    },
+    {
+      "name": "messages_empty_title",
+      "value": "没有会话"
+    },
+    {
+      "name": "messages_empty_message",
+      "value": "开始与某人聊天。"
+    },
+    {
+      "name": "messages_composer_placeholder",
+      "value": "消息"
+    },
+    {
+      "name": "messages_add_attachment",
+      "value": "添加附件"
+    },
+    {
+      "name": "messages_voice",
+      "value": "语音消息"
+    },
+    {
+      "name": "messages_send",
+      "value": "发送消息"
+    },
+    {
+      "name": "messages_call",
+      "value": "通话"
+    },
+    {
+      "name": "messages_video",
+      "value": "视频通话"
+    },
+    {
+      "name": "messages_more",
+      "value": "更多选项"
+    },
+    {
+      "name": "messages_attachment_selected",
+      "value": "附件已准备好"
+    },
+    {
+      "name": "messages_filter_unread",
+      "value": "未读"
+    },
+    {
+      "name": "messages_filter_title",
+      "value": "筛选会话"
+    },
+    {
+      "name": "messages_mute",
+      "value": "静音"
+    },
+    {
+      "name": "messages_unmute",
+      "value": "取消静音"
+    },
+    {
+      "name": "messages_muted",
+      "value": "已静音"
+    },
+    {
+      "name": "messages_unmuted",
+      "value": "已取消静音"
+    },
+    {
+      "name": "messages_archive",
+      "value": "归档"
+    },
+    {
+      "name": "messages_archived",
+      "value": "已归档"
+    },
+    {
+      "name": "messages_emoji",
+      "value": "表情"
+    },
+    {
+      "name": "messages_remove_attachment",
+      "value": "移除附件"
+    },
+    {
+      "name": "messages_signed_out_title",
+      "value": "尚未登录"
+    },
+    {
+      "name": "messages_signed_out_message",
+      "value": "请在“首页”标签登录 x.com，登录后你的会话会显示在这里。"
+    },
+    {
+      "name": "messages_unavailable_title",
+      "value": "私信暂不可用"
+    },
+    {
+      "name": "messages_unavailable_message",
+      "value": "无法读取该账号的收件箱。请刷新，或先打开一次 x.com/messages。"
+    },
+    {
+      "name": "home_signed_out_title",
+      "value": "尚未登录"
+    },
+    {
+      "name": "home_signed_out_message",
+      "value": "请登录 x.com，登录后你的时间线会显示在这里。"
+    },
+    {
+      "name": "home_unavailable_title",
+      "value": "首页暂不可用"
+    },
+    {
+      "name": "home_unavailable_message",
+      "value": "无法读取时间线。请下拉刷新。"
+    },
+    {
+      "name": "home_empty_title",
+      "value": "还没有帖子"
+    },
+    {
+      "name": "home_empty_message",
+      "value": "你关注的人发布的帖子会显示在这里。"
+    },
+    {
+      "name": "notif_signed_out_title",
+      "value": "尚未登录"
+    },
+    {
+      "name": "notif_signed_out_message",
+      "value": "请登录 x.com，登录后你的通知会显示在这里。"
+    },
+    {
+      "name": "notif_unavailable_title",
+      "value": "通知暂不可用"
+    },
+    {
+      "name": "notif_unavailable_message",
+      "value": "无法读取通知。请下拉刷新。"
+    },
+    {
+      "name": "notif_empty_title",
+      "value": "没有通知"
+    },
+    {
+      "name": "notif_empty_message",
+      "value": "点赞、转帖、关注和提及会显示在这里。"
+    },
+    {
+      "name": "notif_liked",
+      "value": "赞了你的帖子"
+    },
+    {
+      "name": "notif_reposted",
+      "value": "转帖了"
+    },
+    {
+      "name": "notif_followed",
+      "value": "关注了你"
+    },
+    {
+      "name": "notif_replied",
+      "value": "回复了"
+    },
+    {
+      "name": "notif_quoted",
+      "value": "引用了你的帖子"
+    },
+    {
+      "name": "notif_mentioned",
+      "value": "提及了你"
+    },
+    {
+      "name": "profile_signed_out_title",
+      "value": "尚未登录"
+    },
+    {
+      "name": "profile_signed_out_message",
+      "value": "登录后可在此查看你的个人资料。"
+    },
+    {
+      "name": "profile_unavailable_title",
+      "value": "个人资料暂不可用"
+    },
+    {
+      "name": "profile_unavailable_message",
+      "value": "无法读取该资料。请下拉刷新。"
+    },
+    {
+      "name": "profile_no_posts",
+      "value": "还没有帖子。"
+    },
+    {
+      "name": "profile_edit",
+      "value": "编辑资料"
+    },
+    {
+      "name": "profile_following",
+      "value": "正在关注"
+    },
+    {
+      "name": "profile_followers",
+      "value": "粉丝"
+    },
+    {
+      "name": "explore_signed_out_title",
+      "value": "尚未登录"
+    },
+    {
+      "name": "explore_signed_out_message",
+      "value": "登录后可在此查看趋势和搜索。"
+    },
+    {
+      "name": "explore_empty_title",
+      "value": "暂无趋势"
+    },
+    {
+      "name": "explore_empty_message",
+      "value": "有热议话题时，趋势会显示在这里。"
+    },
+    {
+      "name": "explore_trends_title",
+      "value": "趋势"
+    },
+    {
+      "name": "explore_no_results_title",
+      "value": "没有结果"
+    },
+    {
+      "name": "explore_no_results_message",
+      "value": "换个关键词试试。"
+    },
+    {
+      "name": "post_reply",
+      "value": "回复"
+    },
+    {
+      "name": "post_repost",
+      "value": "转帖"
+    },
+    {
+      "name": "post_like",
+      "value": "点赞"
+    },
+    {
+      "name": "post_action_failed",
+      "value": "操作失败，请重试。"
+    },
+    {
+      "name": "messages_loading_thread",
+      "value": "正在加载消息…"
+    },
+    {
+      "name": "messages_send_unavailable",
+      "value": "发送失败，请重试。"
+    },
+    {
+      "name": "signin_title",
+      "value": "欢迎使用 OpenTwit"
+    },
+    {
+      "name": "signin_message",
+      "value": "使用你的 X 账号登录，即可浏览时间线、接收通知、收发私信并查看个人资料，全部原生呈现。"
+    },
+    {
+      "name": "signin_benefit_home",
+      "value": "你的时间线"
+    },
+    {
+      "name": "signin_benefit_home_desc",
+      "value": "为你推荐与正在关注，实时更新"
+    },
+    {
+      "name": "signin_benefit_notif",
+      "value": "通知不错过"
+    },
+    {
+      "name": "signin_benefit_notif_desc",
+      "value": "点赞、转帖、关注与提及"
+    },
+    {
+      "name": "signin_benefit_messages",
+      "value": "真实会话"
+    },
+    {
+      "name": "signin_benefit_messages_desc",
+      "value": "私信收件箱，实时同步"
+    },
+    {
+      "name": "signin_button",
+      "value": "登录"
+    },
+    {
+      "name": "signin_note",
+      "value": "登录在 x.com 内完成，会话仅保存在本机。"
     }
   ]
 }
