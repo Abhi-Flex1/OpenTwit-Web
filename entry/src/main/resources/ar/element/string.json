@@ -413,6 +413,26 @@
       "value": "تعذّر ذلك. حاول مرة أخرى."
     },
     {
+      "name": "post_save_image",
+      "value": "حفظ الصورة"
+    },
+    {
+      "name": "post_media_saving",
+      "value": "جارٍ حفظ الصورة"
+    },
+    {
+      "name": "post_media_downloading",
+      "value": "جارٍ تنزيل الصورة…"
+    },
+    {
+      "name": "post_media_saved",
+      "value": "تم حفظ الصورة"
+    },
+    {
+      "name": "post_media_save_failed",
+      "value": "تعذّر حفظ الصورة. حاول مرة أخرى."
+    },
+    {
       "name": "messages_loading_thread",
       "value": "جارٍ تحميل الرسائل…"
     },

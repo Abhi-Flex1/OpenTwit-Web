@@ -73,6 +73,11 @@ export struct NativeProfile {
   };
   onPostAction: (kind: string, id: string) => void = () => {
   };
+  onOpenPost: (id: string) => void = (_id: string) => {
+  };
+  onSaveMedia: (url: string, id: string) => Promise<string> = (_url: string, _id: string): Promise<string> => {
+    return Promise.resolve('cancelled');
+  };
   onEditProfile: () => void = () => {
   };
   onSignIn: () => void = () => {
@@ -303,8 +308,14 @@ export struct NativeProfile {
                 Column({ space: 0 }) {
                   NativePostCard({
                     post: item,
+                    onOpen: () => {
+                      this.onOpenPost(item.id);
+                    },
                     onAction: (kind: string, id: string) => {
                       this.onPostAction(kind, id);
+                    },
+                    onSaveMedia: (url: string) => {
+                      return this.onSaveMedia(url, item.id);
                     }
                   })
                   Divider()

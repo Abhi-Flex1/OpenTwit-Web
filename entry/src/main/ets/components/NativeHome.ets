@@ -53,6 +53,9 @@ export struct NativeHome {
   };
   onPostAction: (kind: string, id: string) => void = () => {
   };
+  onSaveMedia: (url: string, id: string) => Promise<string> = (_url: string, _id: string): Promise<string> => {
+    return Promise.resolve('cancelled');
+  };
   onOpenPost: (id: string) => void = () => {
   };
   onSignIn: () => void = () => {
@@ -153,8 +156,14 @@ export struct NativeHome {
                   Column({ space: 0 }) {
                     NativePostCard({
                       post: item,
+                      onOpen: () => {
+                        this.onOpenPost(item.id);
+                      },
                       onAction: (kind: string, id: string) => {
                         this.onPostAction(kind, id);
+                      },
+                      onSaveMedia: (url: string) => {
+                        return this.onSaveMedia(url, item.id);
                       }
                     })
                     Divider()
@@ -163,9 +172,6 @@ export struct NativeHome {
                       .margin({ left: S20 + 40 + S12 })
                   }
                   .width('100%')
-                  .onClick(() => {
-                    this.onOpenPost(item.id);
-                  })
                 }
               }, (item: NativePost) => item.id)
           }

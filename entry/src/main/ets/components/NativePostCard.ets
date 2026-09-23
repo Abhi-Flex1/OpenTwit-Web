@@ -7,9 +7,16 @@ import { NativePost, formatCount } from '../common/NativeModels';
 export struct NativePostCard {
   @Prop post: NativePost = {
     id: '', name: '', handle: '', avatar: '', text: '', at: 0, time: '',
-    likes: 0, reposts: 0, replies: 0, liked: false, reposted: false, media: ''
+    likes: 0, reposts: 0, replies: 0, liked: false, reposted: false, media: '',
+    mediaWidth: 0, mediaHeight: 0, mediaType: ''
+  };
+  @State savingMedia: boolean = false;
+  onOpen: () => void = () => {
   };
   onAction: (kind: string, id: string) => void = () => {
+  };
+  onSaveMedia: (url: string) => Promise<string> = (_url: string): Promise<string> => {
+    return Promise.resolve('cancelled');
   };
 
   private initials(name: string): string {
@@ -22,6 +29,26 @@ export struct NativePostCard {
       }
     }
     return result === '' ? '?' : result;
+  }
+
+  private mediaAspect(): number {
+    if (this.post.mediaWidth > 0 && this.post.mediaHeight > 0) {
+      return this.post.mediaWidth / this.post.mediaHeight;
+    }
+    return 16 / 9;
+  }
+
+  private async saveMedia(): Promise<void> {
+    if (this.post.media === '' || this.savingMedia) {
+      return;
+    }
+    this.savingMedia = true;
+    try {
+      await this.onSaveMedia(this.post.media);
+    } catch (err) {
+    } finally {
+      this.savingMedia = false;
+    }
   }
 
   @Builder
@@ -81,46 +108,82 @@ export struct NativePostCard {
       Row({ space: S12 }) {
         this.avatar()
         Column({ space: S4 }) {
-          Row({ space: S4 }) {
-            Text(this.post.name !== '' ? this.post.name : '@' + this.post.handle)
-              .fontSize(15)
-              .fontFamily(FONT_FAMILY)
-              .fontWeight(FontWeight.Medium)
-              .maxLines(1)
-              .textOverflow({ overflow: TextOverflow.Ellipsis })
-              .fontColor($r('sys.color.ohos_id_color_text_primary'))
-              .layoutWeight(1)
-            if (this.post.time !== '') {
-              Text(this.post.time)
+          Column({ space: S4 }) {
+            Row({ space: S4 }) {
+              Text(this.post.name !== '' ? this.post.name : '@' + this.post.handle)
+                .fontSize(15)
+                .fontFamily(FONT_FAMILY)
+                .fontWeight(FontWeight.Medium)
+                .maxLines(1)
+                .textOverflow({ overflow: TextOverflow.Ellipsis })
+                .fontColor($r('sys.color.ohos_id_color_text_primary'))
+                .layoutWeight(1)
+              if (this.post.time !== '') {
+                Text(this.post.time)
+                  .fontSize(13)
+                  .fontFamily(FONT_FAMILY)
+                  .fontColor($r('sys.color.ohos_id_color_text_secondary'))
+              }
+            }
+            .width('100%')
+            .alignItems(VerticalAlign.Center)
+            if (this.post.handle !== '') {
+              Text('@' + this.post.handle)
                 .fontSize(13)
                 .fontFamily(FONT_FAMILY)
+                .maxLines(1)
+                .textOverflow({ overflow: TextOverflow.Ellipsis })
                 .fontColor($r('sys.color.ohos_id_color_text_secondary'))
+            }
+            if (this.post.text !== '') {
+              Text(this.post.text)
+                .fontSize(15)
+                .fontFamily(FONT_FAMILY)
+                .fontColor($r('sys.color.ohos_id_color_text_primary'))
+                .width('100%')
             }
           }
           .width('100%')
-          .alignItems(VerticalAlign.Center)
-          if (this.post.handle !== '') {
-            Text('@' + this.post.handle)
-              .fontSize(13)
-              .fontFamily(FONT_FAMILY)
-              .maxLines(1)
-              .textOverflow({ overflow: TextOverflow.Ellipsis })
-              .fontColor($r('sys.color.ohos_id_color_text_secondary'))
-          }
-          if (this.post.text !== '') {
-            Text(this.post.text)
-              .fontSize(15)
-              .fontFamily(FONT_FAMILY)
-              .fontColor($r('sys.color.ohos_id_color_text_primary'))
-              .width('100%')
-          }
+          .onClick(() => {
+            this.onOpen();
+          })
           if (this.post.media !== '') {
-            Image(this.post.media)
-              .width('100%')
-              .aspectRatio(16 / 9)
-              .borderRadius(RADIUS_SM)
-              .objectFit(ImageFit.Cover)
-              .backgroundColor($r('sys.color.ohos_id_color_sub_background'))
+            Stack({ alignContent: Alignment.TopEnd }) {
+              Image(this.post.media)
+                .width('100%')
+                .height('100%')
+                .objectFit(ImageFit.Contain)
+                .alt($r('sys.color.ohos_id_color_sub_background'))
+              Button({ type: ButtonType.Circle }) {
+                if (this.savingMedia) {
+                  LoadingProgress()
+                    .width(18)
+                    .height(18)
+                    .color($r('sys.color.ohos_id_color_foreground_contrary'))
+                } else {
+                  SymbolGlyph($r('sys.symbol.download'))
+                    .fontSize(22)
+                    .fontColor([$r('sys.color.ohos_id_color_foreground_contrary')])
+                }
+              }
+              .width(40)
+              .height(40)
+              .backgroundColor('#66000000')
+              .accessibilityText(this.savingMedia
+                ? $r('app.string.post_media_saving')
+                : $r('app.string.post_save_image'))
+              .accessibilityLevel('yes')
+              .onClick(async () => {
+                await this.saveMedia();
+              })
+              .margin({ top: S8, right: S8 })
+            }
+            .width('100%')
+            .aspectRatio(this.mediaAspect())
+            .constraintSize({ maxHeight: 520 })
+            .borderRadius(RADIUS_SM)
+            .clip(true)
+            .backgroundColor($r('sys.color.ohos_id_color_sub_background'))
           }
           Row({ space: S16 }) {
             this.actionButton($r('sys.symbol.message_fill'), this.post.replies, false,

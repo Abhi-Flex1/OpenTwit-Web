@@ -413,6 +413,26 @@
       "value": "That didn't work. Try again."
     },
     {
+      "name": "post_save_image",
+      "value": "Save image"
+    },
+    {
+      "name": "post_media_saving",
+      "value": "Saving image"
+    },
+    {
+      "name": "post_media_downloading",
+      "value": "Downloading image…"
+    },
+    {
+      "name": "post_media_saved",
+      "value": "Image saved"
+    },
+    {
+      "name": "post_media_save_failed",
+      "value": "Couldn't save the image. Try again."
+    },
+    {
       "name": "messages_loading_thread",
       "value": "Loading messages…"
     },

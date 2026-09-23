@@ -16,6 +16,9 @@ export interface NativePost {
   liked: boolean;
   reposted: boolean;
   media: string;
+  mediaWidth: number;
+  mediaHeight: number;
+  mediaType: string;
 }
 
 export interface NativeNotificationItem {
@@ -60,6 +63,9 @@ export interface BridgePost {
   liked: boolean;
   reposted: boolean;
   media: string;
+  mediaWidth: number;
+  mediaHeight: number;
+  mediaType: string;
 }
 
 export interface BridgeTimeline {
@@ -159,7 +165,10 @@ export function parsePosts(json: string): NativePost[] {
         replies: p.replies ?? 0,
         liked: p.liked === true,
         reposted: p.reposted === true,
-        media: p.media ?? ''
+        media: p.media ?? '',
+        mediaWidth: p.mediaWidth ?? 0,
+        mediaHeight: p.mediaHeight ?? 0,
+        mediaType: p.mediaType ?? ''
       });
     }
     return out;

@@ -28,6 +28,9 @@ import {
   notificationsScript, homeTimelineScript, profileScript, trendsScript,
   searchTweetsScript, postActionScript, sessionIdentityScript, SESSION_WATCHER
 } from '../common/WebChrome';
+import {
+  saveRemoteImage, MEDIA_SAVE_CANCELLED, MEDIA_SAVE_FAILED, MEDIA_SAVE_OK
+} from '../common/MediaSaver';
 import { NativeMessages } from '../components/NativeMessages';
 import { NativeHome } from '../components/NativeHome';
 import { NativeNotifications } from '../components/NativeNotifications';
@@ -1715,6 +1718,22 @@ struct MainTabs {
     this.runBridge('postAction', postActionScript(kind, id), id);
   }
 
+  private async savePostImage(url: string, id: string): Promise<string> {
+    const ctx: common.Context | undefined = this.getUIContext().getHostContext();
+    if (ctx === undefined) {
+      this.toast($r('app.string.post_media_save_failed'));
+      return MEDIA_SAVE_FAILED;
+    }
+    this.toast($r('app.string.post_media_downloading'));
+    const result: string = await saveRemoteImage(ctx as common.UIAbilityContext, url, id);
+    if (result === MEDIA_SAVE_OK) {
+      this.toast($r('app.string.post_media_saved'));
+    } else if (result !== MEDIA_SAVE_CANCELLED) {
+      this.toast($r('app.string.post_media_save_failed'));
+    }
+    return result;
+  }
+
   private static nextCursor(json: string): string {
     try {
       const payload = JSON.parse(json) as TimelineBridgePayload;
@@ -3010,6 +3029,9 @@ struct MainTabs {
           onOpenPost: (id: string) => {
             this.loadWeb(TWITTER_BASE + '/i/web/status/' + id);
           },
+          onSaveMedia: (url: string, id: string) => {
+            return this.savePostImage(url, id);
+          },
           onSignIn: () => {
             this.openWebLogin();
           }
@@ -3111,6 +3133,12 @@ struct MainTabs {
           },
           onPostAction: (kind: string, id: string) => {
             this.runPostAction(kind, id);
+          },
+          onOpenPost: (id: string) => {
+            this.loadWeb(TWITTER_BASE + '/i/web/status/' + id);
+          },
+          onSaveMedia: (url: string, id: string) => {
+            return this.savePostImage(url, id);
           },
           onEditProfile: () => {
             this.loadWeb(TWITTER_EDIT_PROFILE);

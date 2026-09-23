@@ -283,14 +283,18 @@ const TWEET_SHAPE_JS: string =
   'if(!t)return null;var u=t.user||users[t.user_id_str]||users[t.user_id]||{};' +
   'var txt=otText(t.full_text||t.text).slice(0,500);if(!txt&&!t.id_str&&!t.id)return null;' +
   'var id=String(t.id_str||t.id||"");if(!id)return null;' +
-  'var media="";try{var m=(t.extended_entities&&t.extended_entities.media)||(t.entities&&t.entities.media)||[];' +
-  'if(m&&m.length)media=String(m[0].media_url_https||m[0].media_url||"");}catch(e){}' +
+  'var media="",mediaWidth=0,mediaHeight=0,mediaType="";' +
+  'try{var m=(t.extended_entities&&t.extended_entities.media)||(t.entities&&t.entities.media)||[];' +
+  'if(m&&m.length){var one=m[0]||{};media=String(one.media_url_https||one.media_url||"");' +
+  'mediaWidth=Number(one.width||0);mediaHeight=Number(one.height||0);' +
+  'mediaType=String(one.type||"photo");}}catch(e){}' +
   'return {id:id,name:String(u.name||t.name||""),handle:String(u.screen_name||""),' +
   'avatar:String((u.profile_image_url_https||"")).replace("_normal","_bigger"),' +
   'text:txt,at:otTime(t.created_at),' +
   'likes:Number(t.favorite_count||0),reposts:Number(t.retweet_count||0),' +
   'replies:Number(t.reply_count||0),' +
-  'liked:!!t.favorited,reposted:!!t.retweeted,media:media};}';
+  'liked:!!t.favorited,reposted:!!t.retweeted,media:media,' +
+  'mediaWidth:mediaWidth,mediaHeight:mediaHeight,mediaType:mediaType};}';
 
 // Home timeline with cursor paging. Verified live against a signed-in session:
 // v1.1 `statuses/home_timeline` answers 200 with an empty body (dead), while

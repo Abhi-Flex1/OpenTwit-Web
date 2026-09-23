@@ -413,6 +413,26 @@
       "value": "操作失败，请重试。"
     },
     {
+      "name": "post_save_image",
+      "value": "保存图片"
+    },
+    {
+      "name": "post_media_saving",
+      "value": "正在保存图片"
+    },
+    {
+      "name": "post_media_downloading",
+      "value": "正在下载图片…"
+    },
+    {
+      "name": "post_media_saved",
+      "value": "图片已保存"
+    },
+    {
+      "name": "post_media_save_failed",
+      "value": "无法保存图片，请重试。"
+    },
+    {
       "name": "messages_loading_thread",
       "value": "正在加载消息…"
     },
