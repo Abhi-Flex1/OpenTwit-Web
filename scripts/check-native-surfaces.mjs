@@ -99,6 +99,10 @@ check('stale reads dropped on navigation', main.includes('this.dropPendingBridge
 check('late thread replies are keyed', main.includes("key !== '' && key === this.threadId"));
 check('late search replies are keyed', main.includes('if (key === this.searchPending)'));
 check('transient failures retry quickly', main.includes('retryBridgeSoon') && main.includes('1500 * attempt'));
+check('profile post hydration gets a bounded settle pass',
+  main.includes('PROFILE_POST_SETTLE_ATTEMPTS') &&
+  main.includes('scheduleProfilePostSettle') &&
+  main.includes('profileSettleAttempts'));
 check('identity read is DOM-free', main.includes('sessionIdentityScript') && chrome.includes('otAccountFromInbox'));
 check('API text is entity-decoded', chrome.includes('otText(md.text)') && chrome.includes('otText(t.full_text||t.text)'));
 

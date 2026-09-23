@@ -96,6 +96,11 @@ const DRAFT_SAVE_DEBOUNCE_MS: number = 700;
 // How many times the profile surface re-reads while the page finishes
 // rendering, before it says the profile is unavailable instead of spinning.
 const PROFILE_LOAD_ATTEMPTS: number = 4;
+// X can expose the profile header before its first article is hydrated. Keep a
+// separate, short settle pass for that case so a real account does not flash
+// and then keep an empty "No posts yet" state.
+const PROFILE_POST_SETTLE_MS: number = 1800;
+const PROFILE_POST_SETTLE_ATTEMPTS: number = 4;
 
 // Bridge exposed to the page as window.otNative. x.com is a single-page app, so
 // its navigations never fire the Web component's load callbacks; the injected
@@ -292,6 +297,8 @@ struct MainTabs {
   // Bounded: the profile DOM needs a moment to render, but a page that will
   // never render it (wrong route) must not spin forever.
   private profileLoadAttempts: number = 0;
+  private profileSettleAttempts: number = 0;
+  private profileSettleTimer: number = -1;
   private searchNext: string = '';
   private searchPending: string = '';
   private controller: web_webview.WebviewController = new web_webview.WebviewController();
@@ -406,6 +413,7 @@ struct MainTabs {
     this.stopNotifListPolling();
     this.stopTrendsPolling();
     this.stopThreadPolling();
+    this.clearProfileSettleTimer();
     // Cookies are the login. ArkWeb persists them, but writing the jar out
     // explicitly before the page is torn down means an update in place — which
     // is how this app is installed during development — never costs the session.
@@ -629,6 +637,44 @@ struct MainTabs {
     return out.length >= 1 ? out : '';
   }
 
+  private clearProfileSettleTimer(): void {
+    if (this.profileSettleTimer !== -1) {
+      clearTimeout(this.profileSettleTimer);
+      this.profileSettleTimer = -1;
+    }
+  }
+
+  private resetProfileSettle(): void {
+    this.clearProfileSettleTimer();
+    this.profileSettleAttempts = 0;
+  }
+
+  private scheduleProfilePostSettle(key: string): void {
+    if (this.profileSettleTimer !== -1 || this.profileSettleAttempts >= PROFILE_POST_SETTLE_ATTEMPTS) {
+      return;
+    }
+    this.profileSettleAttempts++;
+    this.profileSettleTimer = setTimeout(() => {
+      this.profileSettleTimer = -1;
+      if (this.currentIndex !== 4 || this.profileFor !== key) {
+        return;
+      }
+      let count: number = 0;
+      try {
+        const payload = JSON.parse(this.profileJson) as ProfileBridgePayload;
+        count = payload.posts?.length ?? 0;
+      } catch (err) {
+      }
+      if (count === 0 && this.profileSettleAttempts < PROFILE_POST_SETTLE_ATTEMPTS) {
+        this.refreshProfile(key);
+      } else {
+        // This is either hydrated or genuinely empty. Either way, do not keep a
+        // background timer alive for a profile the user is no longer looking at.
+        this.profileSettleAttempts = 0;
+      }
+    }, PROFILE_POST_SETTLE_MS);
+  }
+
   // How long an async page read may take before the surface is told it failed.
   private static readonly BRIDGE_TIMEOUT_MS: number = 20000;
 
@@ -738,6 +784,12 @@ struct MainTabs {
         if (avatar.indexOf('http') === 0 && avatar !== this.avatarUrl) {
           this.avatarUrl = avatar;
           this.saveAvatar(avatar);
+        }
+        const postCount: number = payload.posts?.length ?? 0;
+        if (postCount > 0) {
+          this.resetProfileSettle();
+        } else if (payload.user !== undefined) {
+          this.scheduleProfilePostSettle(key);
         }
       } catch (err) {
       }
@@ -1597,6 +1649,7 @@ struct MainTabs {
       return;
     }
     if (this.profileFor !== clean.toLowerCase()) {
+      this.resetProfileSettle();
       this.profileFor = clean.toLowerCase();
       this.profileNext = '';
       this.profileJson = '';
