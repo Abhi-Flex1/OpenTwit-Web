@@ -120,14 +120,23 @@ for (const c of components) {
   check(`component exists ${c.split('/').pop()}`, existsSync(join(root, c)));
 }
 const home = read('entry/src/main/ets/components/NativeHome.ets');
+const postCard = read('entry/src/main/ets/components/NativePostCard.ets');
 check('Home pages with LazyForEach', home.includes('LazyForEach'));
 check('Home has loading state', home.includes("'loading'") || home.includes('"loading"'));
 check('Home has signed-out state', home.includes('signed-out'));
 check('Home has empty state', home.includes('empty'));
+check('post author and post body have separate hit zones',
+  postCard.includes('onOpenProfile: (handle: string)') &&
+  postCard.includes("id('post-author-' + this.post.id)") &&
+  postCard.includes('this.onOpenProfile(this.post.handle)') &&
+  postCard.includes('this.onOpen();'));
 const notifications = read('entry/src/main/ets/components/NativeNotifications.ets');
 check('notification rows carry a target post', notifications.includes('targetId') &&
   notifications.includes('this.onOpenItem(item.id, item.targetId)'));
 const profile = read('entry/src/main/ets/components/NativeProfile.ets');
+check('Home and Profile forward author navigation',
+  home.includes('onOpenProfile: (handle: string)') &&
+  profile.includes('onOpenProfile: (handle: string)'));
 check('external profiles do not show Edit profile',
   profile.includes('@Prop isOwnProfile: boolean = false;') &&
   profile.includes('if (this.isOwnProfile) {'));
@@ -135,6 +144,10 @@ check('external profiles expose follow and unfollow callbacks',
   profile.includes('onProfileAction: (handle: string, follow: boolean)') &&
   profile.includes('profile_follow') && profile.includes('profile_following'));
 const main = read('entry/src/main/ets/pages/MainTabs.ets');
+check('shell opens a native profile from an author tap',
+  main.includes('private openProfile(handle: string)') &&
+  main.includes('onOpenProfile: (handle: string)') &&
+  main.includes('this.openProfile(handle)'));
 check('shell owns profile action staging and completion',
   main.includes('private runProfileAction') &&
   main.includes('private stageProfileAction') &&

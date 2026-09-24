@@ -1610,6 +1610,20 @@ struct MainTabs {
     this.discoverOwnProfile(true);
   }
 
+  private openProfile(handle: string): void {
+    const clean: string = handle.charAt(0) === '@' ? handle.substring(1) : handle;
+    if (clean === '') {
+      return;
+    }
+    this.currentIndex = 4;
+    this.viewingHandle = clean;
+    this.webLoginOpen = false;
+    this.webDetailOpen = false;
+    this.applyPollersForTab(4);
+    this.refreshProfile(clean);
+    this.loadWeb(profileUrl(clean));
+  }
+
   private titleMain(): string {
     if (this.webDetailOpen) {
       return this.webDetailTitle;
@@ -3836,6 +3850,9 @@ struct MainTabs {
           onOpenPost: (id: string) => {
             this.openWebDetail(TWITTER_BASE + '/i/web/status/' + id);
           },
+          onOpenProfile: (handle: string) => {
+            this.openProfile(handle);
+          },
           onSaveMedia: (url: string, id: string) => {
             return this.savePostImage(url, id);
           },
@@ -3968,6 +3985,9 @@ struct MainTabs {
           },
           onOpenPost: (id: string) => {
             this.openWebDetail(TWITTER_BASE + '/i/web/status/' + id);
+          },
+          onOpenProfile: (handle: string) => {
+            this.openProfile(handle);
           },
           onSaveMedia: (url: string, id: string) => {
             return this.savePostImage(url, id);

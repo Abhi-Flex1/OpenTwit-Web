@@ -1,4 +1,4 @@
-import { FONT_FAMILY, RADIUS_SM, S12, S16, S20, S4, S8 } from '../common/Theme';
+import { FONT_FAMILY, RADIUS_SM, S12, S16, S2, S20, S4, S8 } from '../common/Theme';
 import { NativePost, formatCount } from '../common/NativeModels';
 
 // One post everywhere: Home, Profile, Explore results and quoted mentions all
@@ -12,6 +12,8 @@ export struct NativePostCard {
   };
   @State savingMedia: boolean = false;
   onOpen: () => void = () => {
+  };
+  onOpenProfile: (handle: string) => void = () => {
   };
   onAction: (kind: string, id: string) => void = () => {
   };
@@ -110,9 +112,23 @@ export struct NativePostCard {
   build() {
     Column({ space: S8 }) {
       Row({ space: S12 }) {
-        this.avatar()
+        Row() {
+          this.avatar()
+        }
+        .width(40)
+        .height(40)
+        .borderRadius(20)
+        .clip(true)
+        .id('post-author-avatar-' + this.post.id)
+        .accessibilityText(this.post.name !== '' ? this.post.name : '@' + this.post.handle)
+        .accessibilityLevel('yes')
+        .onClick(() => {
+          if (this.post.handle !== '') {
+            this.onOpenProfile(this.post.handle);
+          }
+        })
         Column({ space: S4 }) {
-          Column({ space: S4 }) {
+          Column({ space: S2 }) {
             Row({ space: S4 }) {
               Text(this.post.name !== '' ? this.post.name : '@' + this.post.handle)
                 .fontSize(15)
@@ -139,6 +155,17 @@ export struct NativePostCard {
                 .textOverflow({ overflow: TextOverflow.Ellipsis })
                 .fontColor($r('sys.color.ohos_id_color_text_secondary'))
             }
+          }
+          .width('100%')
+          .id('post-author-' + this.post.id)
+          .accessibilityText(this.post.name !== '' ? this.post.name : '@' + this.post.handle)
+          .accessibilityLevel('yes')
+          .onClick(() => {
+            if (this.post.handle !== '') {
+              this.onOpenProfile(this.post.handle);
+            }
+          })
+          Column({ space: S4 }) {
             if (this.post.text !== '') {
               Text(this.post.text)
                 .fontSize(15)
@@ -146,50 +173,50 @@ export struct NativePostCard {
                 .fontColor($r('sys.color.ohos_id_color_text_primary'))
                 .width('100%')
             }
+            if (this.post.media !== '') {
+              Stack({ alignContent: Alignment.TopEnd }) {
+                Image(this.post.media)
+                  .width('100%')
+                  .height('100%')
+                  .objectFit(ImageFit.Contain)
+                  .alt($r('sys.color.ohos_id_color_sub_background'))
+                Button({ type: ButtonType.Circle }) {
+                  if (this.savingMedia) {
+                    LoadingProgress()
+                      .width(18)
+                      .height(18)
+                      .color($r('sys.color.ohos_id_color_foreground_contrary'))
+                  } else {
+                    SymbolGlyph($r('sys.symbol.download'))
+                      .fontSize(22)
+                      .fontColor([$r('sys.color.ohos_id_color_foreground_contrary')])
+                  }
+                }
+                .width(40)
+                .height(40)
+                .backgroundColor('#66000000')
+                .id('post-media-save-' + this.post.id)
+                .accessibilityText(this.savingMedia
+                  ? $r('app.string.post_media_saving')
+                  : $r('app.string.post_save_image'))
+                .accessibilityLevel('yes')
+                .onClick(async () => {
+                  await this.saveMedia();
+                })
+                .margin({ top: S8, right: S8 })
+              }
+              .width('100%')
+              .aspectRatio(this.mediaAspect())
+              .constraintSize({ maxHeight: 520 })
+              .borderRadius(RADIUS_SM)
+              .clip(true)
+              .backgroundColor($r('sys.color.ohos_id_color_sub_background'))
+            }
           }
           .width('100%')
           .onClick(() => {
             this.onOpen();
           })
-          if (this.post.media !== '') {
-            Stack({ alignContent: Alignment.TopEnd }) {
-              Image(this.post.media)
-                .width('100%')
-                .height('100%')
-                .objectFit(ImageFit.Contain)
-                .alt($r('sys.color.ohos_id_color_sub_background'))
-              Button({ type: ButtonType.Circle }) {
-                if (this.savingMedia) {
-                  LoadingProgress()
-                    .width(18)
-                    .height(18)
-                    .color($r('sys.color.ohos_id_color_foreground_contrary'))
-                } else {
-                  SymbolGlyph($r('sys.symbol.download'))
-                    .fontSize(22)
-                    .fontColor([$r('sys.color.ohos_id_color_foreground_contrary')])
-                }
-              }
-              .width(40)
-              .height(40)
-              .backgroundColor('#66000000')
-              .id('post-media-save-' + this.post.id)
-              .accessibilityText(this.savingMedia
-                ? $r('app.string.post_media_saving')
-                : $r('app.string.post_save_image'))
-              .accessibilityLevel('yes')
-              .onClick(async () => {
-                await this.saveMedia();
-              })
-              .margin({ top: S8, right: S8 })
-            }
-            .width('100%')
-            .aspectRatio(this.mediaAspect())
-            .constraintSize({ maxHeight: 520 })
-            .borderRadius(RADIUS_SM)
-            .clip(true)
-            .backgroundColor($r('sys.color.ohos_id_color_sub_background'))
-          }
           Row({ space: S16 }) {
             this.actionButton($r('sys.symbol.message_fill'), this.post.replies, false,
               $r('app.string.post_reply'), 'reply')

@@ -77,6 +77,8 @@ export struct NativeProfile {
   };
   onOpenPost: (id: string) => void = (_id: string) => {
   };
+  onOpenProfile: (handle: string) => void = () => {
+  };
   onSaveMedia: (url: string, id: string) => Promise<string> = (_url: string, _id: string): Promise<string> => {
     return Promise.resolve('cancelled');
   };
@@ -333,6 +335,9 @@ export struct NativeProfile {
                     post: item,
                     onOpen: () => {
                       this.onOpenPost(item.id);
+                    },
+                    onOpenProfile: (handle: string) => {
+                      this.onOpenProfile(handle);
                     },
                     onAction: (kind: string, id: string) => {
                       this.onPostAction(kind, id);

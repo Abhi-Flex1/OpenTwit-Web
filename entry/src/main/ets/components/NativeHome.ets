@@ -58,6 +58,8 @@ export struct NativeHome {
   };
   onOpenPost: (id: string) => void = () => {
   };
+  onOpenProfile: (handle: string) => void = () => {
+  };
   onSignIn: () => void = () => {
   };
 
@@ -158,6 +160,9 @@ export struct NativeHome {
                       post: item,
                       onOpen: () => {
                         this.onOpenPost(item.id);
+                      },
+                      onOpenProfile: (handle: string) => {
+                        this.onOpenProfile(handle);
                       },
                       onAction: (kind: string, id: string) => {
                         this.onPostAction(kind, id);
