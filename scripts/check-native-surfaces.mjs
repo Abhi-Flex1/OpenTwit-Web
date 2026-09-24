@@ -160,6 +160,8 @@ check('shell reserves compose clearance above the floating bar',
   main.includes('private nativeBottomInset()') &&
   main.includes('BAR_HEIGHT + (this.composeFabVisible() ? S16 : 0)') &&
   main.includes('.padding({ bottom: this.nativeBottomInset() })'));
+check('compose FAB clears the floating bar itself',
+  main.includes('.margin({ right: S16, bottom: BAR_HEIGHT + S16 })'));
 check('shell owns profile action staging and completion',
   main.includes('private runProfileAction') &&
   main.includes('private stageProfileAction') &&

@@ -59,25 +59,6 @@ async function closeFile(file: fileIo.File | undefined): Promise<void> {
   }
 }
 
-async function copyPreparedFile(sourcePath: string, destinationUri: string): Promise<boolean> {
-  let sourceFile: fileIo.File | undefined = undefined;
-  let destinationFile: fileIo.File | undefined = undefined;
-  try {
-    sourceFile = await fileIo.open(sourcePath, fileIo.OpenMode.READ_ONLY);
-    destinationFile = await fileIo.open(destinationUri, fileIo.OpenMode.WRITE_ONLY);
-    await fileIo.copyFile(sourceFile.fd, destinationFile.fd);
-    return true;
-  } catch (error) {
-    const err: BusinessError = error as BusinessError;
-    hilog.warn(DOMAIN, TAG, 'image destination copy failed: %{public}d %{public}s',
-      err.code, err.message);
-    return false;
-  } finally {
-    await closeFile(sourceFile);
-    await closeFile(destinationFile);
-  }
-}
-
 /**
  * Downloads one post image into the app sandbox. The caller keeps the returned
  * path until a root-level SaveButton grants temporary media-library access.
@@ -169,8 +150,11 @@ export async function savePreparedImage(context: common.UIAbilityContext,
       const err: BusinessError = error as BusinessError;
       hilog.warn(DOMAIN, TAG, 'secure asset request fallback: %{public}d', err.code);
     }
-    // Some API 24 emulator images expose a damaged legacy MediaAsset database;
-    // the newer creation dialog still honors SaveButton's temporary grant.
+    // On API 24 the secure save extension copies the source into MediaLibrary
+    // before this promise resolves. Its returned value is an internal handle
+    // (the emulator can expose the sentinel "-208"), not a path that
+    // fileIo.open() may reopen. A nonempty result therefore means the
+    // user-approved system save completed successfully.
     const settings: photoAccessHelper.CreationSetting = {
       title: 'OpenTwit-' + safePostId(postId),
       fileNameExtension: extensionFromPath(sourcePath),
@@ -182,10 +166,8 @@ export async function savePreparedImage(context: common.UIAbilityContext,
       hilog.info(DOMAIN, TAG, 'image save canceled by user: %{public}s', postId);
       return MEDIA_SAVE_CANCELLED;
     }
-    const copied: boolean = await copyPreparedFile(sourcePath, destinations[0]);
-    hilog.info(DOMAIN, TAG, 'image save fallback completed: %{public}s result=%{public}s',
-      postId, copied ? 'ok' : 'failed');
-    return copied ? MEDIA_SAVE_OK : MEDIA_SAVE_FAILED;
+    hilog.info(DOMAIN, TAG, 'image save committed by secure dialog: %{public}s', postId);
+    return MEDIA_SAVE_OK;
   } catch (error) {
     const err: BusinessError = error as BusinessError;
     hilog.warn(DOMAIN, TAG, 'image save commit failed: %{public}d %{public}s', err.code, err.message);

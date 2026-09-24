@@ -3593,7 +3593,11 @@ struct MainTabs {
     .height(56)
     .backgroundColor($r('sys.color.ohos_id_color_emphasize'))
     .shadow({ radius: 12, color: '#33000000', offsetX: 0, offsetY: 4 })
-    .margin({ right: S16, bottom: S16 })
+    // The FAB is a sibling of the floating tab bar, not part of the content
+    // column. Content gets its clearance through nativeBottomInset(), but the
+    // button has to carry the bar height itself or its lower half is painted
+    // under the navigation surface.
+    .margin({ right: S16, bottom: BAR_HEIGHT + S16 })
     .accessibilityText($r('app.string.compose_title'))
     .accessibilityLevel('yes')
     .onClick(() => {

@@ -34,10 +34,10 @@ check('creates the authorized media asset from the sandbox URI',
   saver.includes('helper.applyChanges(assetRequest)'));
 check('falls back to the API 24 creation dialog when applyChanges fails',
   saver.includes('showAssetsCreationDialogEx') &&
-  saver.includes('destinations[0]'));
-check('copies the prepared bytes into the fallback destination',
-  saver.includes('copyPreparedFile(sourcePath, destinations[0])') &&
-  saver.includes('fileIo.copyFile(sourceFile.fd, destinationFile.fd)'));
+  saver.includes('destinations.length === 0'));
+check('does not reopen the secure destination handle',
+  !saver.includes('fileIo.open(destinations[0])') &&
+  saver.includes('fileIo.unlink(sourcePath)'));
 check('closes files and destroys request', saver.includes('request.destroy()') &&
   saver.includes('fileIo.close(file)'));
 check('always removes temporary media', saver.includes('fileIo.unlink(sourcePath)'));

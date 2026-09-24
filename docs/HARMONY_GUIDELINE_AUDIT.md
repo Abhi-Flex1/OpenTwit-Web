@@ -1388,14 +1388,20 @@ is important because security components inside clipped virtualized `ListItem`
 subtrees register with `regStatus 0`. On the secure result, the app creates the
 media asset from the live sandbox URI, falls back to the API-24
 `showAssetsCreationDialogEx` contract when `applyChanges` is unavailable, and
-copies the prepared bytes into the returned destination URI. Cancellation,
-sheet dismissal, and component teardown all remove the temporary source.
+treats a nonempty secure-dialog result as completion. The API-24 save extension
+copies the prepared bytes itself; its returned value is an internal handle (the
+phone AVD exposes the sentinel `"-208"`), so the app must not reopen it with
+`fileIo.open`. Cancellation, sheet dismissal, and component teardown all remove
+the temporary source.
 
-The first API 24 phone AVD reached the secure authorization dialog and
-MediaLibrary, but that image's database is damaged: hilog reported
-`27394049/27394104`, `CreateAssetBucket fileId [-222]`, and
-`desFileUris:["-208"]`. The app reports `failed` and cleans up rather than
-claiming that an image was saved.
+The API 24 phone AVD reached the secure authorization dialog and MediaLibrary.
+On the current build, the system log records `setSaveResult ... isSave: true`
+and `Photo createAssetsForApp success`, followed by `desFileUris:["-208"]`.
+The app records `image save committed by secure dialog` and returns to the
+feed without trying to open that internal sentinel. The direct MediaLibrary
+asset query remains unavailable on this damaged emulator image, so the proof
+is bounded to the system completion log and app-visible success state rather
+than an independent gallery-row query.
 
 The clean foldable AVD (`127.0.0.1:5559`, API 24) then completed the same
 real JPEG flow end to end. The post-card download produced the native
