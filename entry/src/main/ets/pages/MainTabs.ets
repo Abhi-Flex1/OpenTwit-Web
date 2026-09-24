@@ -268,6 +268,11 @@ struct MainTabs {
   // surfaces. Opened from any sign-in screen, closed by Back, by switching
   // tabs, or automatically the moment the account appears.
   @State webLoginOpen: boolean = false;
+  // A user-facing web destination (post detail, settings, bookmarks, lists)
+  // briefly takes over the shell. Hidden session loads keep using loadWeb().
+  @State webDetailOpen: boolean = false;
+  @State webDetailTitle: string = '';
+  private webDetailReturnIndex: number = 0;
   // Native composer state. "webComposer" is the escape hatch: when the page's
   // own composer cannot be driven (or the post needs media/GIF/poll), the sheet
   // reveals the real x.com composer instead of failing.
@@ -568,6 +573,10 @@ struct MainTabs {
     }
     if (this.webLoginOpen) {
       this.webLoginOpen = false;
+      return true;
+    }
+    if (this.webDetailOpen) {
+      this.closeWebDetail();
       return true;
     }
     // Every visible surface is native ArkUI over a hidden session WebView, so
@@ -1119,6 +1128,8 @@ struct MainTabs {
   // flow. The account menu, timeline switcher and FAB stay hidden behind it
   // until the session answers.
   private openWebLogin(): void {
+    this.webDetailOpen = false;
+    this.webDetailTitle = '';
     this.webLoginOpen = true;
     this.loadWeb(TWITTER_LOGIN);
   }
@@ -1156,6 +1167,62 @@ struct MainTabs {
     }
   }
 
+  // User-facing web navigation. The session WebView is already mounted and is
+  // reused so cookies, bearer state, and account context stay identical to the
+  // native bridge; the detail flag is what makes it visible above the native tab.
+  private openWebDetail(url: string): void {
+    if (url === '') {
+      return;
+    }
+    this.webLoginOpen = false;
+    this.webDetailReturnIndex = this.currentIndex;
+    this.webDetailOpen = true;
+    this.webDetailTitle = this.webDetailTitleForUrl(url);
+    this.loadWeb(url);
+  }
+
+  private webDetailTitleForUrl(url: string): string {
+    const path: string = pathOf(url);
+    if (path.indexOf('/status/') >= 0) {
+      return this.localized($r('app.string.post'));
+    }
+    if (path.indexOf('/settings/notifications') >= 0) {
+      return this.localized($r('app.string.menu_notification_settings'));
+    }
+    if (path.indexOf('/settings') >= 0) {
+      return this.localized($r('app.string.menu_settings'));
+    }
+    if (path.indexOf('/i/bookmarks') >= 0) {
+      return this.localized($r('app.string.menu_bookmarks'));
+    }
+    if (path.indexOf('/lists') >= 0) {
+      return this.localized($r('app.string.menu_lists'));
+    }
+    if (path.indexOf('/notifications') === 0) {
+      return this.localized($r('app.string.tab_notifications'));
+    }
+    return '';
+  }
+
+  private closeWebDetail(): void {
+    const returnIndex: number = this.webDetailReturnIndex;
+    this.webDetailOpen = false;
+    this.webDetailTitle = '';
+    this.webDetailReturnIndex = 0;
+    this.currentIndex = returnIndex;
+    this.currentPath = '';
+    this.currentUrl = '';
+    this.pageTitle = '';
+    this.canGoBack = false;
+    this.applyImmersiveInset();
+    if (returnIndex === 4 && this.viewingHandle !== '') {
+      this.loadWeb(profileUrl(this.viewingHandle));
+    } else if (returnIndex >= 0 && returnIndex < TWITTER_ROUTES.length) {
+      this.loadWeb(TWITTER_ROUTES[returnIndex]);
+    }
+    this.refreshVisibleSurface();
+  }
+
   // A 2in1 window is a desktop, so it asks x.com for the desktop web app: a
   // phone user agent inside a 1000+ vp window is a mismatch the site acts on
   // (and one its sign-in risk checks can read as an emulated browser). Phones,
@@ -1178,6 +1245,12 @@ struct MainTabs {
     const idx: number = routeIndexForUrl(url);
     hilog.debug(DOMAIN, TAG, 'syncFromUrl url=%{public}s idx=%{public}d current=%{public}d',
       url, idx, this.currentIndex);
+    if (this.webDetailOpen) {
+      const detailTitle: string = this.webDetailTitleForUrl(url);
+      if (detailTitle !== '') {
+        this.webDetailTitle = detailTitle;
+      }
+    }
     if (idx >= 0 && idx !== this.currentIndex) {
       this.currentIndex = idx;
       this.applyPollersForTab(idx);
@@ -1260,6 +1333,16 @@ struct MainTabs {
   }
 
   private goRoute(index: number): void {
+    if (this.webDetailOpen) {
+      this.webDetailOpen = false;
+      this.webDetailTitle = '';
+      this.webDetailReturnIndex = 0;
+      if (index === this.currentIndex) {
+        this.loadWeb(TWITTER_ROUTES[index]);
+        this.refreshVisibleSurface();
+        return;
+      }
+    }
     // Leaving the login view by navigation closes it; the session underneath
     // stays exactly where the flow left it.
     this.webLoginOpen = false;
@@ -1331,6 +1414,9 @@ struct MainTabs {
   }
 
   private titleMain(): string {
+    if (this.webDetailOpen) {
+      return this.webDetailTitle;
+    }
     if (this.currentIndex === 3 && this.chatOpen) {
       return this.chatTitle;
     }
@@ -1407,6 +1493,9 @@ struct MainTabs {
   // Second line of the header: a profile shows its handle, a post shows what
   // kind of page it is. Tab roots and everything else show nothing — no URLs.
   private subtitleMain(): string {
+    if (this.webDetailOpen) {
+      return '';
+    }
     if (this.currentIndex === 3 && this.chatOpen) {
       return '';
     }
@@ -2267,6 +2356,10 @@ struct MainTabs {
       this.webLoginOpen = false;
       return;
     }
+    if (this.webDetailOpen) {
+      this.closeWebDetail();
+      return;
+    }
     if (this.currentIndex !== 0) {
       this.goRoute(0);
     }
@@ -2478,7 +2571,7 @@ struct MainTabs {
   // login flow). Tab roots are native lists; the hidden session WebView's
   // history is invisible and must never surface as a back arrow.
   private showBack(): boolean {
-    return (this.currentIndex === 3 && this.chatOpen) || this.webLoginOpen;
+    return (this.currentIndex === 3 && this.chatOpen) || this.webLoginOpen || this.webDetailOpen;
   }
 
   // Every tab root is native, so there is no web-history back to offer. Only
@@ -2491,7 +2584,7 @@ struct MainTabs {
   }
 
   private isHomeRoot(): boolean {
-    return this.currentIndex === 0;
+    return !this.webDetailOpen && this.currentIndex === 0;
   }
 
   // The page is the live authority on the session: preferences can outlive it
@@ -2547,7 +2640,7 @@ struct MainTabs {
   // Explore owns the native search field. The visible tab is the authority, not
   // the hidden session URL (which is often a login flow when signed out).
   private isExploreSurface(): boolean {
-    return this.currentIndex === 1;
+    return !this.webDetailOpen && this.currentIndex === 1;
   }
 
   @Builder
@@ -2611,32 +2704,32 @@ struct MainTabs {
         MenuItem({
           content: $r('app.string.menu_bookmarks'),
           symbolStartIcon: new SymbolGlyphModifier($r('sys.symbol.bookmark_fill'))
-        })
+          })
           .onClick(() => {
-            this.loadWeb(TWITTER_BOOKMARKS);
+            this.openWebDetail(TWITTER_BOOKMARKS);
           })
         MenuItem({
           content: $r('app.string.menu_lists'),
           symbolStartIcon: new SymbolGlyphModifier($r('sys.symbol.list_bullet_square_fill'))
-        })
+          })
           .onClick(() => {
-            this.loadWeb(listsUrl(this.ownHandle));
+            this.openWebDetail(listsUrl(this.ownHandle));
           })
       } else {
         MenuItem({
           content: $r('app.string.menu_create_account'),
           symbolStartIcon: new SymbolGlyphModifier($r('sys.symbol.person_badge_plus'))
-        })
+          })
           .onClick(() => {
-            this.loadWeb(TWITTER_SIGNUP);
+            this.openWebDetail(TWITTER_SIGNUP);
           })
       }
       MenuItem({
         content: $r('app.string.menu_settings'),
         symbolStartIcon: new SymbolGlyphModifier($r('sys.symbol.gearshape'))
-      })
+        })
         .onClick(() => {
-          this.loadWeb(TWITTER_SETTINGS);
+          this.openWebDetail(TWITTER_SETTINGS);
         })
     }
     // Frosted rather than opaque: the menu floats over the page content and the
@@ -2764,7 +2857,7 @@ struct MainTabs {
     // Actions belong to a tab's own root screen. The hidden session URL is
     // irrelevant (often a login flow); the visible native tab decides. The
     // login view carries no actions besides Back.
-    if (!this.webLoginOpen) {
+    if (!this.webLoginOpen && !this.webDetailOpen) {
       if (this.currentIndex === 3 && this.chatOpen) {
       // Calls, video calls, and the overflow menu still belong to the web
       // client. Do not draw native controls that only show a toast; add them
@@ -2772,18 +2865,18 @@ struct MainTabs {
     } else if (this.currentIndex === 2) {
       this.headerIconButton($r('sys.symbol.gearshape'), $r('app.string.menu_notification_settings'),
         () => {
-          this.loadWeb(TWITTER_NOTIF_SETTINGS);
+          this.openWebDetail(TWITTER_NOTIF_SETTINGS);
         })
     } else if (this.currentIndex === 3 && !this.chatOpen) {
       // x.com has no separate direct-message settings page any more (its
       // /settings/messages route is gone), so this opens the settings root the
       // stock app's gear leads to as well.
       this.headerIconButton($r('sys.symbol.gearshape'), $r('app.string.menu_settings'), () => {
-        this.loadWeb(TWITTER_SETTINGS);
+        this.openWebDetail(TWITTER_SETTINGS);
       })
     } else if (this.currentIndex === 4 && this.isOwnProfile()) {
       this.headerIconButton($r('sys.symbol.gearshape'), $r('app.string.menu_settings'), () => {
-        this.loadWeb(TWITTER_SETTINGS);
+        this.openWebDetail(TWITTER_SETTINGS);
       })
     }
     }
@@ -3245,7 +3338,7 @@ struct MainTabs {
       // underneath for session and badge state, but what the user sees and
       // touches is the native list — which is also what hides the page's own
       // wide-layout Chat column and Post button without guessing selectors.
-      if (this.currentIndex === 0 && !this.webLoginOpen) {
+      if (this.currentIndex === 0 && !this.webLoginOpen && !this.webDetailOpen) {
         NativeHome({
           homeJson: this.homeJson,
           homeTab: this.homeTabIndex,
@@ -3260,7 +3353,7 @@ struct MainTabs {
             this.runPostAction(kind, id);
           },
           onOpenPost: (id: string) => {
-            this.loadWeb(TWITTER_BASE + '/i/web/status/' + id);
+            this.openWebDetail(TWITTER_BASE + '/i/web/status/' + id);
           },
           onSaveMedia: (url: string, id: string) => {
             return this.savePostImage(url, id);
@@ -3273,7 +3366,7 @@ struct MainTabs {
           .height('100%')
           .padding({ bottom: this.isWide ? 0 : BAR_HEIGHT })
       }
-      if (this.currentIndex === 1 && !this.webLoginOpen) {
+      if (this.currentIndex === 1 && !this.webLoginOpen && !this.webDetailOpen) {
         NativeExplore({
           trendsJson: this.trendsJson,
           searchJson: this.searchJson,
@@ -3296,7 +3389,7 @@ struct MainTabs {
           .height('100%')
           .padding({ bottom: this.isWide ? 0 : BAR_HEIGHT })
       }
-      if (this.currentIndex === 2 && !this.webLoginOpen) {
+      if (this.currentIndex === 2 && !this.webLoginOpen && !this.webDetailOpen) {
         NativeNotifications({
           notifJson: this.notifListJson,
           onRefresh: () => {
@@ -3304,9 +3397,9 @@ struct MainTabs {
           },
           onOpenItem: (id: string, targetId: string) => {
             if (targetId !== '') {
-              this.loadWeb(TWITTER_BASE + '/i/web/status/' + targetId);
+              this.openWebDetail(TWITTER_BASE + '/i/web/status/' + targetId);
             } else {
-              this.loadWeb(TWITTER_NOTIFICATIONS);
+              this.openWebDetail(TWITTER_NOTIFICATIONS);
             }
           },
           onSignIn: () => {
@@ -3320,7 +3413,7 @@ struct MainTabs {
       // The Messages tab is native ArkUI end to end. The shared WebView stays
       // mounted underneath for login/session state and unread badge reads, but
       // the list, conversation and composer are drawn by NativeMessages.
-      if (this.currentIndex === 3 && !this.webLoginOpen) {
+      if (this.currentIndex === 3 && !this.webLoginOpen && !this.webDetailOpen) {
         NativeMessages({
           open: this.chatOpen,
           dmJson: this.dmJson,
@@ -3359,7 +3452,7 @@ struct MainTabs {
             bottom: this.immersiveConversation() ? 0 : BAR_HEIGHT
           })
       }
-      if (this.currentIndex === 4 && !this.webLoginOpen) {
+      if (this.currentIndex === 4 && !this.webLoginOpen && !this.webDetailOpen) {
         NativeProfile({
           profileJson: this.profileJson,
           viewingHandle: this.viewingHandle !== '' ? this.viewingHandle : this.ownHandle,
@@ -3377,13 +3470,13 @@ struct MainTabs {
             this.runPostAction(kind, id);
           },
           onOpenPost: (id: string) => {
-            this.loadWeb(TWITTER_BASE + '/i/web/status/' + id);
+            this.openWebDetail(TWITTER_BASE + '/i/web/status/' + id);
           },
           onSaveMedia: (url: string, id: string) => {
             return this.savePostImage(url, id);
           },
           onEditProfile: () => {
-            this.loadWeb(TWITTER_EDIT_PROFILE);
+            this.openWebDetail(TWITTER_EDIT_PROFILE);
           },
           onSignIn: () => {
             this.openWebLogin();
@@ -3398,7 +3491,7 @@ struct MainTabs {
       // (never on Profile or Messages, never over the login flow), only once
       // a page is on screen, and only when there is an account to post from.
       if (this.currentIndex !== 4 && this.currentIndex !== 3 && !this.hasError &&
-        !this.webLoginOpen && this.signedIn()) {
+        !this.webLoginOpen && !this.webDetailOpen && this.signedIn()) {
         this.composeFab()
       }
     }

@@ -95,6 +95,14 @@ check('notification rows carry a target post', notifications.includes('targetId'
 const main = read('entry/src/main/ets/pages/MainTabs.ets');
 check('notification taps open the real status route',
   main.includes("TWITTER_BASE + '/i/web/status/' + targetId"));
+check('user-facing routes reveal the session web surface',
+  main.includes('@State webDetailOpen: boolean = false') &&
+  main.includes('private openWebDetail(url: string)') &&
+  main.includes('!this.webDetailOpen'));
+check('visible web details have a native return path',
+  main.includes('private closeWebDetail()') &&
+  main.includes('this.closeWebDetail();') &&
+  main.includes('this.webDetailReturnIndex'));
 for (const token of ['homeJson', 'notifListJson', 'profileJson', 'trendsJson', 'searchJson', 'threadJson']) {
   check(`shell owns ${token}`, main.includes(token));
 }
