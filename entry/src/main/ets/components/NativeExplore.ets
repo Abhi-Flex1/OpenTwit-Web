@@ -265,9 +265,14 @@ export struct NativeExplore {
             }
           })
         } else if (this.results.length === 0) {
-          this.statePanel($r('sys.symbol.magnifyingglass'),
-            $r('app.string.explore_no_results_title'),
-            $r('app.string.explore_no_results_message'))
+          Column() {
+            this.statePanel($r('sys.symbol.magnifyingglass'),
+              $r('app.string.explore_no_results_title'),
+              $r('app.string.explore_no_results_message'))
+            this.fullSearchAction()
+          }
+          .width('100%')
+          .layoutWeight(1)
         } else {
           Column({ space: 0 }) {
             List({ space: 0 }) {
