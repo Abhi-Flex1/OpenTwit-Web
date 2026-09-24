@@ -12,6 +12,7 @@ const profile = read('entry/src/main/ets/components/NativeProfile.ets');
 const main = read('entry/src/main/ets/pages/MainTabs.ets');
 const models = read('entry/src/main/ets/common/NativeModels.ets');
 const chrome = read('entry/src/main/ets/common/WebChrome.ets');
+const manifest = read('entry/src/main/module.json5');
 
 let failed = 0;
 function check(name, ok) {
@@ -25,6 +26,9 @@ check('validates response and size', saver.includes('responseCode < 200') &&
   saver.includes('bytes.byteLength > MAX_IMAGE_BYTES'));
 check('uses the secure SaveButton authorization path', main.includes('SaveButton') &&
   main.includes('SaveButtonOnClickResult.SUCCESS'));
+check('does not request broad media-library access for SaveButton',
+  !manifest.includes('ohos.permission.WRITE_IMAGEVIDEO') &&
+  !manifest.includes('ohos.permission.READ_IMAGEVIDEO'));
 check('creates the authorized media asset from the sandbox URI',
   saver.includes('createImageAssetRequest(context, sourceUri)') &&
   saver.includes('helper.applyChanges(assetRequest)'));

@@ -63,6 +63,8 @@ const DESKTOP_MODE_KEY: string = 'desktop_site';
 // The composer's text, kept in ArkData preferences so a draft survives the
 // sheet closing and the app being killed.
 const COMPOSE_DRAFT_KEY: string = 'compose_draft';
+const DM_DRAFTS_KEY: string = 'dm_drafts';
+const DM_DRAFT_KEY_PREFIX: string = 'dm::';
 const NOTIFICATION_ASKED_KEY: string = 'notification_asked';
 const LOCATION_PERMISSIONS: Permissions[] = ['ohos.permission.LOCATION'];
 const FIRST_LOAD_TIMEOUT_MS: number = 15000;
@@ -95,6 +97,7 @@ const NOTIFICATION_POLL_MS: number = 5000;
 const NOTIFICATION_POLL_LIMIT: number = 6;
 // The composer writes its draft a moment after the last keystroke.
 const DRAFT_SAVE_DEBOUNCE_MS: number = 700;
+const DM_DRAFT_SAVE_DEBOUNCE_MS: number = 700;
 // How many times the profile surface re-reads while the page finishes
 // rendering, before it says the profile is unavailable instead of spinning.
 const PROFILE_LOAD_ATTEMPTS: number = 4;
@@ -310,6 +313,7 @@ struct MainTabs {
   // own composer cannot be driven (or the post needs media/GIF/poll), the sheet
   // reveals the real x.com composer instead of failing.
   @State draft: string = '';
+  @State dmDraftsJson: string = '{}';
   @State webComposer: boolean = false;
   @State posting: boolean = false;
   @State mediaSavePath: string = '';
@@ -380,6 +384,9 @@ struct MainTabs {
   private badgeRetryTimer: number = -1;
   private badgeRetries: number = 0;
   private draftSaveTimer: number = -1;
+  private dmDraftSaveTimer: number = -1;
+  private dmDrafts: Record<string, string> = {};
+  private dmDraftStore: Record<string, string> = {};
   // Whether the notification prompt (the one that lets the icon carry a badge)
   // has been shown, so a decline is respected and never repeated.
   private notificationAsked: boolean = false;
@@ -504,6 +511,9 @@ struct MainTabs {
         if (draft !== '') {
           this.draft = draft;
         }
+        const dmDrafts: string = await prefs.get(DM_DRAFTS_KEY, '{}') as string;
+        this.dmDraftStore = this.parseDmDrafts(dmDrafts);
+        this.dmDraftsJson = JSON.stringify(this.currentDmDrafts());
         this.notificationAsked = await prefs.get(NOTIFICATION_ASKED_KEY, false) as boolean;
       }
     } catch (err) {
@@ -563,6 +573,11 @@ struct MainTabs {
       this.draftSaveTimer = -1;
       // Leaving the app is a good moment to make sure the draft is on disk.
       this.saveDraft();
+    }
+    if (this.dmDraftSaveTimer !== -1) {
+      clearTimeout(this.dmDraftSaveTimer);
+      this.dmDraftSaveTimer = -1;
+      this.persistDmDrafts();
     }
     if (this.wideListener !== undefined) {
       try {
@@ -1255,6 +1270,8 @@ struct MainTabs {
   private acceptHandle(handle: string, navigate: boolean): void {
     this.ownHandle = handle;
     this.saveOwnHandle(handle);
+    this.dmDrafts = this.currentDmDrafts();
+    this.dmDraftsJson = JSON.stringify(this.dmDrafts);
     // The account just appeared (login or discovery): the login view has done
     // its job and every signed-out panel must flip to live lists at once.
     this.webLoginOpen = false;
@@ -2784,6 +2801,78 @@ struct MainTabs {
     }
   }
 
+  private parseDmDrafts(raw: string): Record<string, string> {
+    const out: Record<string, string> = {};
+    if (raw === '') {
+      return out;
+    }
+    try {
+      const parsed = JSON.parse(raw) as Record<string, string>;
+      Object.keys(parsed).forEach((key: string) => {
+        if (typeof parsed[key] === 'string' && parsed[key] !== '') {
+          out[key] = parsed[key];
+        }
+      });
+    } catch (err) {
+    }
+    return out;
+  }
+
+  private currentDmDrafts(): Record<string, string> {
+    const out: Record<string, string> = {};
+    const prefix: string = DM_DRAFT_KEY_PREFIX + this.ownHandle.toLowerCase() + '::';
+    if (prefix === DM_DRAFT_KEY_PREFIX + '::') {
+      return out;
+    }
+    Object.keys(this.dmDraftStore).forEach((key: string) => {
+      if (key.indexOf(prefix) === 0 && this.dmDraftStore[key] !== '') {
+        out[key.substring(prefix.length)] = this.dmDraftStore[key];
+      }
+    });
+    return out;
+  }
+
+  private dmDraftKey(conversationId: string): string {
+    return DM_DRAFT_KEY_PREFIX + this.ownHandle.toLowerCase() + '::' + conversationId;
+  }
+
+  private updateDmDraft(conversationId: string, text: string): void {
+    if (conversationId === '' || this.ownHandle === '') {
+      return;
+    }
+    const key: string = this.dmDraftKey(conversationId);
+    if (text === '') {
+      this.dmDraftStore[key] = '';
+    } else {
+      this.dmDraftStore[key] = text;
+    }
+    this.dmDrafts = this.currentDmDrafts();
+    this.dmDraftsJson = JSON.stringify(this.dmDrafts);
+    if (this.dmDraftSaveTimer !== -1) {
+      clearTimeout(this.dmDraftSaveTimer);
+    }
+    this.dmDraftSaveTimer = setTimeout(() => {
+      this.dmDraftSaveTimer = -1;
+      this.persistDmDrafts();
+    }, DM_DRAFT_SAVE_DEBOUNCE_MS);
+  }
+
+  private persistDmDrafts(): void {
+    this.putPreference(DM_DRAFTS_KEY, JSON.stringify(this.dmDraftStore));
+  }
+
+  private clearDmDrafts(): void {
+    this.dmDrafts = {};
+    this.dmDraftsJson = '{}';
+    if (this.dmDraftSaveTimer !== -1) {
+      clearTimeout(this.dmDraftSaveTimer);
+      this.dmDraftSaveTimer = -1;
+    }
+    // Keep the account-namespaced store on disk. A later sign-in to the same
+    // account can restore its draft; a different account can never see it.
+    this.persistDmDrafts();
+  }
+
   // Native "Post": type the draft into the page's own editor, then press the
   // page's own submit button. The whole composer is HarmonyOS UI — only the
   // submit goes through x.com, so the post is a real post.
@@ -2892,6 +2981,7 @@ struct MainTabs {
     this.profileFor = '';
     this.profileNext = '';
     this.profileJson = '{"state":"signed-out"}';
+    this.clearDmDrafts();
     this.applyImmersiveInset();
   }
 
@@ -3698,6 +3788,7 @@ struct MainTabs {
           open: this.chatOpen,
           dmJson: this.dmJson,
           threadJson: this.threadJson,
+          draftsJson: this.dmDraftsJson,
           onConversationChange: (open: boolean, title: string) => {
             this.chatOpen = open;
             this.chatTitle = title;
@@ -3727,6 +3818,9 @@ struct MainTabs {
           },
           onRemoveAttachment: (id: string) => {
             this.cancelDmMediaForConversation(id);
+          },
+          onDraftChange: (id: string, text: string) => {
+            this.updateDmDraft(id, text);
           },
           onMuteConversation: (id: string, muted: boolean) => {
             this.muteDm(id, muted);

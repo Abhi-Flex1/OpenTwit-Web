@@ -87,6 +87,15 @@ check('chat media cancellation removes the optimistic row',
   messages.includes("payload.state === 'navigation-cancelled'") &&
   messages.includes('this.removePendingMessage(result.localMessageId, false)'));
 check('chat composer is locked while sending', messages.includes('.enabled(!this.sending)'));
+check('chat drafts are conversation-scoped and restored on open',
+  messages.includes("@Prop @Watch('onDraftsChanged') draftsJson") &&
+  messages.includes('private drafts: Record<string, string>') &&
+  messages.includes("this.setComposerText(this.drafts[id] ?? '')") &&
+  messages.includes('onDraftChange: (id: string, text: string)'));
+check('chat draft edits survive emoji and send failures',
+  messages.includes('this.appendComposerText(item)') &&
+  messages.includes('.onChange((value: string) =>') &&
+  messages.includes('this.removePendingMessage(result.localMessageId, true)'));
 // 3. Components exist and own their states ------------------------------------
 const components = [
   'entry/src/main/ets/components/NativeHome.ets',
@@ -129,6 +138,17 @@ check('closing media work removes its pending bridge',
   main.includes('this.bridgePending.delete(this.pendingDmMediaBridgeId)'));
 check('late text send does not refresh a closed thread',
   main.includes('this.chatOpen && this.threadId === conversationId'));
+check('DM drafts are debounced into ArkData',
+  main.includes("const DM_DRAFTS_KEY: string = 'dm_drafts'") &&
+  main.includes('DM_DRAFT_SAVE_DEBOUNCE_MS') &&
+  main.includes('this.persistDmDrafts()'));
+check('DM drafts are account-namespaced',
+  main.includes("const DM_DRAFT_KEY_PREFIX: string = 'dm::'") &&
+  main.includes('this.ownHandle.toLowerCase()') &&
+  main.includes('this.currentDmDrafts()'));
+check('sign-out hides drafts without exposing another account',
+  main.includes("this.dmDraftsJson = '{}'") &&
+  main.includes('this.persistDmDrafts()'));
 check('notification taps open the real status route',
   main.includes("TWITTER_BASE + '/i/web/status/' + targetId"));
 check('user-facing routes reveal the session web surface',

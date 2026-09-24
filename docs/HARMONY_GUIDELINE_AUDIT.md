@@ -1406,3 +1406,23 @@ directories contained no source afterward, and no MediaLibrary error appeared
 in the bounded post-commit log. This is the healthy-library asset proof that
 was previously missing; the damaged phone image remains a device-specific
 negative case, not evidence that the save path succeeds everywhere.
+
+### 18.9 Account-scoped native DM drafts (2026-09-24)
+
+The native conversation composer now keeps unfinished text in the same ArkData
+preferences store as the post composer. Draft keys are namespaced as
+`dm::<lowercase-handle>::<conversation-id>`, so two conversations and two
+accounts cannot overwrite one another. The component restores a conversation's
+draft when that thread is opened, updates the store for typed text and emoji,
+clears it after a confirmed send, and restores the text after a failed send.
+Signing out hides the active projection immediately; the same account can
+recover its drafts after signing back in, while a different account receives
+an empty draft set.
+
+The permission warning emitted by the compiler at `applyChanges()` is expected
+for this API surface. HarmonyOS's `SaveButton` documentation explicitly states
+that callers using the secure control do not need to declare
+`ohos.permission.WRITE_IMAGEVIDEO`; the control supplies the short-lived
+media-library grant. Adding a broad media permission would weaken the privacy
+model and is intentionally not done. The healthy foldable save proof above and
+the detached media-save contract remain the verification for this path.

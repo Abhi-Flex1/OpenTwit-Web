@@ -284,6 +284,7 @@ export struct NativeMessages {
   @Prop @Watch('onThreadChanged') threadJson: string = '';
   @Prop @Watch('onSendStateChanged') sendStateJson: string = '';
   @Prop @Watch('onDmMediaChanged') dmMediaResultJson: string = '';
+  @Prop @Watch('onDraftsChanged') draftsJson: string = '{}';
   @State conversations: NativeChatConversation[] = [];
   // What the bridge said about the account, so the surface can be honest about
   // why there is nothing to show.
@@ -308,6 +309,7 @@ export struct NativeMessages {
   @State filterIndex: number = FILTER_ALL;
   private threadScroller: Scroller = new Scroller();
   private readCutoffs: Map<string, number> = new Map<string, number>();
+  private drafts: Record<string, string> = {};
   onConversationChange: (open: boolean, title: string) => void = () => {
   };
   // The shell owns the WebView, so history and sending go through it.
@@ -321,6 +323,8 @@ export struct NativeMessages {
   };
   onRemoveAttachment: (id: string) => void = () => {
   };
+  onDraftChange: (id: string, text: string) => void = () => {
+  };
   onMuteConversation: (id: string, muted: boolean) => void = () => {
   };
   onSignIn: () => void = () => {
@@ -330,6 +334,37 @@ export struct NativeMessages {
     this.onConversationChange(false, '');
     this.onDmChanged();
     this.onThreadChanged();
+    this.onDraftsChanged();
+  }
+
+  onDraftsChanged(): void {
+    const next: Record<string, string> = {};
+    if (this.draftsJson !== '') {
+      try {
+        const parsed = JSON.parse(this.draftsJson) as Record<string, string>;
+        Object.keys(parsed).forEach((key: string) => {
+          if (typeof parsed[key] === 'string') {
+            next[key] = parsed[key];
+          }
+        });
+      } catch (err) {
+      }
+    }
+    this.drafts = next;
+    if (this.selectedId !== '') {
+      this.composerText = this.drafts[this.selectedId] ?? '';
+    }
+  }
+
+  private setComposerText(value: string): void {
+    this.composerText = value;
+    if (this.selectedId !== '') {
+      this.onDraftChange(this.selectedId, value);
+    }
+  }
+
+  private appendComposerText(value: string): void {
+    this.setComposerText(this.composerText + value);
   }
 
   // A refresh from the shell never costs the user what they typed and sent in
@@ -474,7 +509,7 @@ export struct NativeMessages {
       }
     }
     if (restoreComposer && restored !== '' && this.composerText === '') {
-      this.composerText = restored;
+      this.setComposerText(restored);
     }
     const active: NativeChatMessage[] = [];
     for (let i: number = 0; i < this.activeMessages.length; i++) {
@@ -534,7 +569,7 @@ export struct NativeMessages {
         }
         this.attachment = { name: '', size: 0, mimeType: '', preview: '' };
         this.sending = false;
-        this.composerText = '';
+        this.setComposerText('');
       } else if (payload.state === 'cancelled' ||
         payload.state === 'navigation-cancelled') {
         if (result.localMessageId !== undefined && result.localMessageId !== '') {
@@ -545,6 +580,9 @@ export struct NativeMessages {
       } else {
         if (result.localMessageId !== undefined && result.localMessageId !== '') {
           this.removePendingMessage(result.localMessageId, true);
+        }
+        if (this.selectedId !== '') {
+          this.onDraftChange(this.selectedId, this.composerText);
         }
         this.sending = false;
         this.toast($r('app.string.messages_send_unavailable'));
@@ -607,7 +645,7 @@ export struct NativeMessages {
     this.readCutoffs.set(id, conversation.at);
     this.activeMessages = conversation.messages.slice();
     this.threadState = 'loading';
-    this.composerText = '';
+    this.setComposerText(this.drafts[id] ?? '');
     this.emojiOpen = false;
     if (conversation.unread > 0) {
       conversation.unread = 0;
@@ -659,7 +697,7 @@ export struct NativeMessages {
     conversation.time = 'now';
     this.conversations = this.conversations.slice();
     if (this.attachment.name === '') {
-      this.composerText = '';
+      this.setComposerText('');
     }
     this.emojiOpen = false;
     this.scrollThreadToEnd();
@@ -924,7 +962,7 @@ export struct NativeMessages {
         }
         .height(44)
         .onClick(() => {
-          this.composerText = this.composerText + item;
+          this.appendComposerText(item);
         })
       }, (item: string, index: number) => index.toString())
     }
@@ -1044,6 +1082,9 @@ export struct NativeMessages {
           .padding({ left: S12, right: S12 })
           .enterKeyType(EnterKeyType.Send)
           .enabled(!this.sending)
+          .onChange((value: string) => {
+            this.setComposerText(value);
+          })
           .onSubmit(() => {
             this.sendMessage();
           })
