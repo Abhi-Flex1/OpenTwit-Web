@@ -156,6 +156,10 @@ check('shell opens the authenticated full-search route',
   main.includes('private openWebDetail') &&
   main.includes('searchUrl(query)') &&
   main.includes('explore_search_title'));
+check('shell reserves compose clearance above the floating bar',
+  main.includes('private nativeBottomInset()') &&
+  main.includes('BAR_HEIGHT + (this.composeFabVisible() ? S16 : 0)') &&
+  main.includes('.padding({ bottom: this.nativeBottomInset() })'));
 check('shell owns profile action staging and completion',
   main.includes('private runProfileAction') &&
   main.includes('private stageProfileAction') &&

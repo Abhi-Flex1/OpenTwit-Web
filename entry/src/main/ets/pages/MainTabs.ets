@@ -3134,6 +3134,23 @@ struct MainTabs {
     return !this.webDetailOpen && this.currentIndex === 1;
   }
 
+  private composeFabVisible(): boolean {
+    return !this.isWide && this.currentIndex !== 4 && this.currentIndex !== 3 &&
+      !this.hasError && !this.webLoginOpen && !this.webDetailOpen && this.signedIn();
+  }
+
+  // The phone tab bar floats over the native surface, and the content tabs
+  // additionally carry the 56vp compose button. Reserve the button's 16vp
+  // margin as well, or its top edge clips the final row at the bottom of a
+  // feed. Wide layouts keep the rail in-flow and conversation view owns the
+  // full window.
+  private nativeBottomInset(): number {
+    if (this.isWide || this.immersiveConversation()) {
+      return 0;
+    }
+    return BAR_HEIGHT + (this.composeFabVisible() ? S16 : 0);
+  }
+
   @Builder
   backButton() {
     Button({ type: ButtonType.Circle }) {
@@ -3865,7 +3882,7 @@ struct MainTabs {
         })
           .width('100%')
           .height('100%')
-          .padding({ bottom: this.isWide ? 0 : BAR_HEIGHT })
+          .padding({ bottom: this.nativeBottomInset() })
       }
       if (this.currentIndex === 1 && !this.webLoginOpen && !this.webDetailOpen) {
         NativeExplore({
@@ -3893,7 +3910,7 @@ struct MainTabs {
         })
           .width('100%')
           .height('100%')
-          .padding({ bottom: this.isWide ? 0 : BAR_HEIGHT })
+          .padding({ bottom: this.nativeBottomInset() })
       }
       if (this.currentIndex === 2 && !this.webLoginOpen && !this.webDetailOpen) {
         NativeNotifications({
@@ -3914,7 +3931,7 @@ struct MainTabs {
         })
           .width('100%')
           .height('100%')
-          .padding({ bottom: this.isWide ? 0 : BAR_HEIGHT })
+          .padding({ bottom: this.nativeBottomInset() })
       }
       // The Messages tab is native ArkUI end to end. The shared WebView stays
       // mounted underneath for login/session state and unread badge reads, but
@@ -3969,9 +3986,7 @@ struct MainTabs {
           .height('100%')
           // The native surface is not a web page, so it clears the floating tab
           // bar with real padding rather than an injected stylesheet.
-          .padding({
-            bottom: this.immersiveConversation() ? 0 : BAR_HEIGHT
-          })
+          .padding({ bottom: this.nativeBottomInset() })
       }
       if (this.currentIndex === 4 && !this.webLoginOpen && !this.webDetailOpen) {
         NativeProfile({
@@ -4012,14 +4027,13 @@ struct MainTabs {
         })
           .width('100%')
           .height('100%')
-          .padding({ bottom: this.isWide ? 0 : BAR_HEIGHT })
+          .padding({ bottom: this.nativeBottomInset() })
       }
 
       // Native compose entry point, like the stock app: on content tabs only
       // (never on Profile or Messages, never over the login flow), only once
       // a page is on screen, and only when there is an account to post from.
-      if (this.currentIndex !== 4 && this.currentIndex !== 3 && !this.hasError &&
-        !this.webLoginOpen && !this.webDetailOpen && this.signedIn()) {
+      if (this.composeFabVisible()) {
         this.composeFab()
       }
     }
