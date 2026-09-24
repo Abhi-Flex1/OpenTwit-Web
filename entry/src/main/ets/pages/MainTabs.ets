@@ -99,6 +99,10 @@ const NOTIFICATION_POLL_LIMIT: number = 6;
 // The composer writes its draft a moment after the last keystroke.
 const DRAFT_SAVE_DEBOUNCE_MS: number = 700;
 const DM_DRAFT_SAVE_DEBOUNCE_MS: number = 700;
+// The WebView can have a valid x.com cookie before its first bridge script can
+// resolve the account. Keep native surfaces in their loading treatment during
+// that short bootstrap window instead of flashing a signed-out card.
+const SESSION_BOOTSTRAP_GRACE_MS: number = 30000;
 // How many times the profile surface re-reads while the page finishes
 // rendering, before it says the profile is unavailable instead of spinning.
 const PROFILE_LOAD_ATTEMPTS: number = 4;
@@ -305,6 +309,7 @@ struct MainTabs {
   @State currentUrl: string = '';
   @State isWide: boolean = false;
   @State firstLoadDone: boolean = false;
+  @State sessionResolving: boolean = true;
   @State sheetOpen: boolean = false;
   // Messages is a native ArkUI surface. The title/back state lives here so the
   // shell header can show a conversation exactly like a pushed native page.
@@ -390,6 +395,7 @@ struct MainTabs {
   private dmSeen: Map<string, number> = new Map<string, number>();
   private dmFirstRead: boolean = true;
   private firstLoadTimer: number = -1;
+  private sessionBootstrapTimer: number = -1;
   private badgeTimer: number = -1;
   private badgeRetryTimer: number = -1;
   private badgeRetries: number = 0;
@@ -506,6 +512,7 @@ struct MainTabs {
     });
     this.applyBreakpoints();
     this.armFirstLoadTimeout();
+    this.armSessionBootstrap();
     this.armBadgeRefresh();
     try {
       const ctx: common.Context | undefined = this.getUIContext().getHostContext();
@@ -530,6 +537,9 @@ struct MainTabs {
       }
     } catch (err) {
       hilog.warn(DOMAIN, TAG, 'preferences unavailable: %{public}s', JSON.stringify(err));
+    }
+    if (this.ownHandle !== '') {
+      this.finishSessionResolution();
     }
     // The visible tab owns its poller from first paint. Home is index 0.
     this.applyPollersForTab(this.currentIndex);
@@ -570,6 +580,10 @@ struct MainTabs {
     if (this.firstLoadTimer !== -1) {
       clearTimeout(this.firstLoadTimer);
       this.firstLoadTimer = -1;
+    }
+    if (this.sessionBootstrapTimer !== -1) {
+      clearTimeout(this.sessionBootstrapTimer);
+      this.sessionBootstrapTimer = -1;
     }
     this.clearDmMedia();
     if (this.badgeTimer !== -1) {
@@ -626,6 +640,27 @@ struct MainTabs {
       clearTimeout(this.firstLoadTimer);
       this.firstLoadTimer = -1;
     }
+  }
+
+  private armSessionBootstrap(): void {
+    if (this.sessionBootstrapTimer !== -1) {
+      clearTimeout(this.sessionBootstrapTimer);
+    }
+    this.sessionBootstrapTimer = setTimeout(() => {
+      this.sessionBootstrapTimer = -1;
+      if (this.sessionResolving) {
+        this.sessionResolving = false;
+        this.refreshVisibleSurface();
+      }
+    }, SESSION_BOOTSTRAP_GRACE_MS);
+  }
+
+  private finishSessionResolution(): void {
+    if (this.sessionBootstrapTimer !== -1) {
+      clearTimeout(this.sessionBootstrapTimer);
+      this.sessionBootstrapTimer = -1;
+    }
+    this.sessionResolving = false;
   }
 
   // Bottom bar on phones, side rail on wide layouts. The listener only flips a
@@ -1163,6 +1198,11 @@ struct MainTabs {
   }
 
   private applyIdentity(json: string): void {
+    if (json.indexOf('"state":"signed-out"') >= 0) {
+      this.finishSessionResolution();
+      this.refreshVisibleSurface();
+      return;
+    }
     if (json.indexOf('"state":"ok"') < 0) {
       return;
     }
@@ -1235,8 +1275,12 @@ struct MainTabs {
     }
     try {
       this.controller.runJavaScript('document.cookie.indexOf("ct0=")>=0?"1":""').then((raw: string) => {
-        if (MainTabs.unquote(raw) !== '1' || this.ownHandle !== '' ||
-          this.webLoginOpen || this.discovering) {
+        if (MainTabs.unquote(raw) !== '1') {
+          this.finishSessionResolution();
+          this.refreshVisibleSurface();
+          return;
+        }
+        if (this.ownHandle !== '' || this.webLoginOpen || this.discovering) {
           return;
         }
         this.readSessionIdentity();
@@ -1295,10 +1339,12 @@ struct MainTabs {
       this.acceptHandle(handle, true);
       return;
     }
+    this.finishSessionResolution();
     this.finishDiscover(true);
   }
 
   private acceptHandle(handle: string, navigate: boolean): void {
+    this.finishSessionResolution();
     this.ownHandle = handle;
     this.saveOwnHandle(handle);
     this.dmDrafts = this.currentDmDrafts();
@@ -1321,6 +1367,7 @@ struct MainTabs {
   // flow. The account menu, timeline switcher and FAB stay hidden behind it
   // until the session answers.
   private openWebLogin(): void {
+    this.finishSessionResolution();
     this.webDetailOpen = false;
     this.webDetailTitle = '';
     this.webLoginOpen = true;
@@ -1917,6 +1964,10 @@ struct MainTabs {
 
   private refreshDms(): void {
     if (!this.signedIn()) {
+      if (this.sessionResolving) {
+        this.dmJson = '{"state":"loading"}';
+        return;
+      }
       // No account yet: say so plainly instead of showing anything at all.
       this.dmJson = '{"state":"signed-out"}';
       return;
@@ -1946,6 +1997,9 @@ struct MainTabs {
 
   private refreshHome(): void {
     if (!this.signedIn()) {
+      if (this.sessionResolving) {
+        return;
+      }
       this.homeJson = '{"state":"signed-out"}';
       return;
     }
@@ -1981,6 +2035,9 @@ struct MainTabs {
 
   private refreshNotifList(): void {
     if (!this.signedIn()) {
+      if (this.sessionResolving) {
+        return;
+      }
       this.notifListJson = '{"state":"signed-out"}';
       return;
     }
@@ -2019,6 +2076,10 @@ struct MainTabs {
       this.profileLoadAttempts = 0;
     }
     if (!this.signedIn()) {
+      if (this.sessionResolving) {
+        this.profileJson = '';
+        return;
+      }
       this.profileJson = '{"state":"signed-out"}';
       return;
     }
@@ -2061,6 +2122,9 @@ struct MainTabs {
 
   private refreshTrends(): void {
     if (!this.signedIn()) {
+      if (this.sessionResolving) {
+        return;
+      }
       this.trendsJson = '{"state":"signed-out"}';
       return;
     }

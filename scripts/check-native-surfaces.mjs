@@ -124,6 +124,10 @@ const postCard = read('entry/src/main/ets/components/NativePostCard.ets');
 const explore = read('entry/src/main/ets/components/NativeExplore.ets');
 check('Home pages with LazyForEach', home.includes('LazyForEach'));
 check('Home has loading state', home.includes("'loading'") || home.includes('"loading"'));
+check('Home absorbs the initial x.com hydration race',
+  home.includes('INITIAL_HYDRATION_GRACE_MS') &&
+  home.includes('isTransientHydrationState') &&
+  home.includes("this.homeState = 'loading'"));
 check('Home has signed-out state', home.includes('signed-out'));
 check('Home has empty state', home.includes('empty'));
 check('post author and post body have separate hit zones',
@@ -160,6 +164,12 @@ check('shell reserves compose clearance above the floating bar',
   main.includes('private nativeBottomInset()') &&
   main.includes('BAR_HEIGHT + (this.composeFabVisible() ? S16 : 0)') &&
   main.includes('.padding({ bottom: this.nativeBottomInset() })'));
+check('shell waits for session identity before showing signed-out chrome',
+  main.includes('SESSION_BOOTSTRAP_GRACE_MS') &&
+  main.includes('@State sessionResolving') &&
+  main.includes('if (this.sessionResolving)') &&
+  main.includes('this.finishSessionResolution()') &&
+  main.includes('this.dmJson = \'{"state":"loading"}\''));
 check('compose FAB clears the floating bar itself',
   main.includes('.margin({ right: S16, bottom: BAR_HEIGHT + S16 })'));
 check('shell owns profile action staging and completion',

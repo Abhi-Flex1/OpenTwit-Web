@@ -1413,7 +1413,23 @@ in the bounded post-commit log. This is the healthy-library asset proof that
 was previously missing; the damaged phone image remains a device-specific
 negative case, not evidence that the save path succeeds everywhere.
 
-### 18.9 Account-scoped native DM drafts (2026-09-24)
+### 18.9 Cold-start session resolution is native and bounded
+
+The phone AVD can restore a valid x.com cookie before the first ArkWeb bridge
+read can find the account handle. Before this pass, Home briefly painted a
+signed-out card or an error card while the same page later returned live
+posts. The shell now holds every native tab in its loading state during a
+bounded 30-second session-resolution window, and Home independently absorbs
+the first `SecurityError`/no-bearer hydration responses for up to 20 seconds.
+
+On the current debug build, the 4-second and 20-second phone captures show the
+Home header and live WebView-backed native surface without a sign-in or error
+card; the 38-second capture contains real posts. A saved handle or a confirmed
+session identity ends the gate immediately, while a confirmed absent `ct0`
+cookie still opens the real sign-in flow. `NativeMessages` uses the same
+loading payload so the gate is consistent across tabs.
+
+### 18.10 Account-scoped native DM drafts (2026-09-24)
 
 The native conversation composer now keeps unfinished text in the same ArkData
 preferences store as the post composer. Draft keys are namespaced as

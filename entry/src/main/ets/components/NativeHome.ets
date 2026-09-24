@@ -3,6 +3,12 @@ import { NativePost, parsePosts, nextCursorOf, stateOf } from '../common/NativeM
 import { NativeSignIn } from './NativeSignIn';
 import { NativePostCard } from './NativePostCard';
 
+// x.com can briefly report a SecurityError/no-bearer while its first document
+// is still hydrating. Keep the native surface in its loading treatment during
+// that window, then expose the real retryable state instead of flashing an
+// error card on every cold start.
+const INITIAL_HYDRATION_GRACE_MS: number = 20000;
+
 // Home timeline: the account's real posts, newest first, paging by max_id.
 // Polls only while on screen (the shell owns the timer); pull-to-refresh and
 // the tab switcher both re-read from the top.
@@ -46,7 +52,10 @@ export struct NativeHome {
   @State homeState: string = 'loading';
   @State refreshing: boolean = false;
   @State loadingMore: boolean = false;
+  @State initialHydration: boolean = true;
   private source: TimelineSource = new TimelineSource([]);
+  private initialHydrationTimer: number = -1;
+  private pendingInitialState: string = 'loading';
   onRefresh: () => void = () => {
   };
   onLoadMore: () => void = () => {
@@ -64,12 +73,63 @@ export struct NativeHome {
   };
 
   aboutToAppear(): void {
+    this.armInitialHydration();
     this.onJsonChanged();
+  }
+
+  aboutToDisappear(): void {
+    this.clearInitialHydrationTimer();
+  }
+
+  private armInitialHydration(): void {
+    this.clearInitialHydrationTimer();
+    this.initialHydration = true;
+    this.pendingInitialState = 'loading';
+    this.initialHydrationTimer = setTimeout(() => {
+      this.initialHydrationTimer = -1;
+      if (this.initialHydration) {
+        this.initialHydration = false;
+        this.homeState = this.pendingInitialState === 'loading' ? 'error' :
+          this.pendingInitialState;
+      }
+    }, INITIAL_HYDRATION_GRACE_MS);
+  }
+
+  private clearInitialHydrationTimer(): void {
+    if (this.initialHydrationTimer !== -1) {
+      clearTimeout(this.initialHydrationTimer);
+      this.initialHydrationTimer = -1;
+    }
+  }
+
+  private finishInitialHydration(): void {
+    this.clearInitialHydrationTimer();
+    this.initialHydration = false;
+  }
+
+  private isTransientHydrationState(state: string): boolean {
+    return state === 'error' || state === 'no-bearer' || state === 'unexpected' ||
+      state.indexOf('http-') === 0;
   }
 
   onJsonChanged(): void {
     const state: string = stateOf(this.homeJson);
-    this.homeState = state;
+    if (state === 'loading' && this.initialHydration && this.posts.length === 0) {
+      this.pendingInitialState = state;
+      this.homeState = state;
+    } else if (state === 'signed-out' || state === 'ok' || state === 'empty') {
+      this.finishInitialHydration();
+      this.homeState = state;
+    } else if (this.isTransientHydrationState(state) && this.initialHydration &&
+      this.posts.length === 0) {
+      // Keep the last transient state for the grace timer while drawing a
+      // native loading state for now.
+      this.pendingInitialState = state;
+      this.homeState = 'loading';
+    } else {
+      this.finishInitialHydration();
+      this.homeState = state;
+    }
     if (state === 'ok') {
       const list: NativePost[] = parsePosts(this.homeJson);
       // Paged reads append on the shell side; a top refresh replaces.
