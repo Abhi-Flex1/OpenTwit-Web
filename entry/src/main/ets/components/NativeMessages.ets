@@ -1,5 +1,5 @@
 import {
-  FONT_FAMILY, RADIUS_SM, ROW_HEIGHT, S12, S16, S2, S20, S4, S8, TOOL_BUTTON
+  FONT_FAMILY, RADIUS, RADIUS_SM, ROW_HEIGHT, S12, S16, S2, S20, S4, S8, TOOL_BUTTON
 } from '../common/Theme';
 import { NativeSignIn } from './NativeSignIn';
 
@@ -929,15 +929,18 @@ export struct NativeMessages {
             .fontSize(16)
             .fontFamily(FONT_FAMILY)
             .fontColor(item.outgoing
-              ? $r('sys.color.ohos_id_color_foreground_contrary')
-              : $r('sys.color.ohos_id_color_text_primary'))
+              ? $r('app.color.chat_outgoing_text')
+              : $r('app.color.chat_incoming_text'))
+            .textAlign(TextAlign.Start)
         }
         .constraintSize({ maxWidth: '78%' })
         .padding({ left: S12, right: S12, top: S8, bottom: S8 })
-        .borderRadius(RADIUS_SM)
+        .alignItems(VerticalAlign.Center)
+        .borderRadius(RADIUS)
+        .clip(true)
         .backgroundColor(item.outgoing
-          ? $r('sys.color.ohos_id_color_emphasize')
-          : $r('sys.color.ohos_id_color_sub_background'))
+          ? $r('app.color.chat_outgoing_background')
+          : $r('app.color.chat_incoming_background'))
       }
       Text(item.time)
         .fontSize(11)
@@ -947,6 +950,9 @@ export struct NativeMessages {
     .width('100%')
     .alignItems(item.outgoing ? HorizontalAlign.End : HorizontalAlign.Start)
     .padding({ left: S16, right: S16, top: S4, bottom: S4 })
+    .id('chat-message-' + item.id)
+    .accessibilityText(item.text)
+    .accessibilityLevel('yes')
   }
 
   @Builder
@@ -1124,7 +1130,7 @@ export struct NativeMessages {
       .alignItems(VerticalAlign.Center)
     }
     .width('100%')
-    .backgroundColor($r('sys.color.ohos_id_color_background'))
+    .backgroundColor($r('app.color.chat_composer_background'))
   }
 
   @Builder

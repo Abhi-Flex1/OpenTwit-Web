@@ -3,6 +3,26 @@
     {
       "name": "start_window_background",
       "value": "#FFFFFF"
+    },
+    {
+      "name": "chat_outgoing_background",
+      "value": "#0A59F7"
+    },
+    {
+      "name": "chat_outgoing_text",
+      "value": "#FFFFFF"
+    },
+    {
+      "name": "chat_incoming_background",
+      "value": "#F1F3F5"
+    },
+    {
+      "name": "chat_incoming_text",
+      "value": "#17181A"
+    },
+    {
+      "name": "chat_composer_background",
+      "value": "#FFFFFF"
     }
   ]
 }

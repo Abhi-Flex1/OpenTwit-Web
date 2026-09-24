@@ -69,10 +69,15 @@ const messages = read('entry/src/main/ets/components/NativeMessages.ets');
 check('chat bubbles use the bounded Row renderer',
   messages.includes('Row() {') &&
   messages.includes('.backgroundColor(item.outgoing') &&
-  messages.includes('.borderRadius(RADIUS_SM)'));
+  messages.includes('.borderRadius(RADIUS)') &&
+  messages.includes('app.color.chat_outgoing_background') &&
+  messages.includes('app.color.chat_incoming_background'));
+check('chat bubbles expose stable accessible message nodes',
+  messages.includes("id('chat-message-' + item.id)") &&
+  messages.includes('.accessibilityText(item.text)'));
 check('chat bubbles keep contrasting system text colors',
-  messages.includes('ohos_id_color_foreground_contrary') &&
-  messages.includes('ohos_id_color_text_primary'));
+  messages.includes('app.color.chat_outgoing_text') &&
+  messages.includes('app.color.chat_incoming_text'));
 check('chat composer exposes native image attachment',
   messages.includes('sys.symbol.picture') &&
   messages.includes('messages_add_attachment') &&
@@ -240,6 +245,21 @@ for (let i = 1; i < parsed.length; i++) {
   const missing = [...baseKeys].filter((k) => !keys.has(k));
   check(`locale ${locales[i]} covers base (${baseKeys.size} keys)`,
     missing.length === 0, missing.slice(0, 5).join(','));
+}
+
+const colorLocales = [
+  'entry/src/main/resources/base/element/color.json',
+  'entry/src/main/resources/dark/element/color.json'
+];
+const chatColorKeys = [
+  'chat_outgoing_background', 'chat_outgoing_text',
+  'chat_incoming_background', 'chat_incoming_text', 'chat_composer_background'
+];
+for (const locale of colorLocales) {
+  const colors = JSON.parse(read(locale)).color ?? [];
+  const keys = new Set(colors.map((color) => color.name));
+  check(`chat colors in ${locale}`,
+    chatColorKeys.every((key) => keys.has(key)));
 }
 
 // 5. Parser behaviour on stubbed payloads --------------------------------------
