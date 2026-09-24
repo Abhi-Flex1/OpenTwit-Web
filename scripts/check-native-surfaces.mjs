@@ -118,6 +118,10 @@ check('Home has empty state', home.includes('empty'));
 const notifications = read('entry/src/main/ets/components/NativeNotifications.ets');
 check('notification rows carry a target post', notifications.includes('targetId') &&
   notifications.includes('this.onOpenItem(item.id, item.targetId)'));
+const profile = read('entry/src/main/ets/components/NativeProfile.ets');
+check('external profiles do not show Edit profile',
+  profile.includes('@Prop isOwnProfile: boolean = false;') &&
+  profile.includes('if (this.isOwnProfile) {'));
 const main = read('entry/src/main/ets/pages/MainTabs.ets');
 check('chat media sends are isolated from text sends',
   main.includes('sendDmMedia') &&
@@ -162,6 +166,8 @@ check('visible web details have a native return path',
 check('returning to Profile from a detail restores the profile route',
   main.includes('if (index === 4) {') &&
   main.includes('this.openOwnProfile();'));
+check('shell passes profile ownership into the native header',
+  main.includes('isOwnProfile: this.isOwnProfile()'));
 for (const token of ['homeJson', 'notifListJson', 'profileJson', 'trendsJson', 'searchJson', 'threadJson']) {
   check(`shell owns ${token}`, main.includes(token));
 }

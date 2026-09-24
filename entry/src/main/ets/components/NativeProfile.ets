@@ -61,6 +61,7 @@ class ProfilePostsSource implements IDataSource {
 export struct NativeProfile {
   @Prop @Watch('onJsonChanged') profileJson: string = '';
   @Prop viewingHandle: string = '';
+  @Prop isOwnProfile: boolean = false;
   @State user: NativeProfileUser | undefined = undefined;
   @State posts: NativePost[] = [];
   @State profileState: string = 'loading';
@@ -209,13 +210,15 @@ export struct NativeProfile {
           .border({ width: 3, color: $r('sys.color.ohos_id_color_background') })
           .borderRadius(34)
           Blank()
-          Button($r('app.string.profile_edit'))
-            .type(ButtonType.Capsule)
-            .fontFamily(FONT_FAMILY)
-            .fontSize(14)
-            .onClick(() => {
-              this.onEditProfile();
-            })
+          if (this.isOwnProfile) {
+            Button($r('app.string.profile_edit'))
+              .type(ButtonType.Capsule)
+              .fontFamily(FONT_FAMILY)
+              .fontSize(14)
+              .onClick(() => {
+                this.onEditProfile();
+              })
+          }
         }
         .width('100%')
         .alignItems(VerticalAlign.Bottom)

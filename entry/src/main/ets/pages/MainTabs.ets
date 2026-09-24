@@ -3841,6 +3841,7 @@ struct MainTabs {
         NativeProfile({
           profileJson: this.profileJson,
           viewingHandle: this.viewingHandle !== '' ? this.viewingHandle : this.ownHandle,
+          isOwnProfile: this.isOwnProfile(),
           onRefresh: () => {
             const handle: string = this.viewingHandle !== '' ? this.viewingHandle : this.ownHandle;
             if (handle !== '') {
