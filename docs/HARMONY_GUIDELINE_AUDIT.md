@@ -1367,10 +1367,18 @@ media asset from the live sandbox URI, falls back to the API-24
 copies the prepared bytes into the returned destination URI. Cancellation,
 sheet dismissal, and component teardown all remove the temporary source.
 
-On the healthy API 24 phone AVD, the secure authorization dialog was reached
-and the app reached MediaLibrary, but that AVD's database is damaged: hilog
-reported `27394049/27394104`, `CreateAssetBucket fileId [-222]`, and
+The first API 24 phone AVD reached the secure authorization dialog and
+MediaLibrary, but that image's database is damaged: hilog reported
+`27394049/27394104`, `CreateAssetBucket fileId [-222]`, and
 `desFileUris:["-208"]`. The app reports `failed` and cleans up rather than
-claiming that an image was saved. A healthy-library asset proof remains
-pending until that emulator image is reset/repaired; this is recorded as a
-device limitation, not silently treated as product success.
+claiming that an image was saved.
+
+The clean foldable AVD (`127.0.0.1:5559`, API 24) then completed the same
+real JPEG flow end to end. The post-card download produced the native
+`Ready to save` sheet, the system authorization dialog was accepted, and
+OpenTwit logged `image save committed with secure asset request: fixture-media`
+from its app PID. The app returned to the native feed, the prepared cache/files
+directories contained no source afterward, and no MediaLibrary error appeared
+in the bounded post-commit log. This is the healthy-library asset proof that
+was previously missing; the damaged phone image remains a device-specific
+negative case, not evidence that the save path succeeds everywhere.
