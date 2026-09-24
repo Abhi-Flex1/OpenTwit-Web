@@ -130,10 +130,27 @@ function messagePreview(item: NativeChatMessage): string {
   return item.mediaUrl === '' ? '' : 'Photo';
 }
 
-function hasServerEcho(item: NativeChatMessage, serverTexts: Record<string, boolean>): boolean {
+function takeServerEcho(item: NativeChatMessage, serverTexts: Record<string, number[]>,
+  serverMediaTimes: number[]): boolean {
   const text: string = item.text.trim();
-  if (text !== '' && serverTexts[text] === true) {
-    return true;
+  if (text !== '') {
+    const times: number[] = serverTexts[text] ?? [];
+    for (let i: number = 0; i < times.length; i++) {
+      if (times[i] >= item.at) {
+        times.splice(i, 1);
+        return true;
+      }
+    }
+    return false;
+  }
+  if (item.kind !== 'post') {
+    return false;
+  }
+  for (let i: number = 0; i < serverMediaTimes.length; i++) {
+    if (serverMediaTimes[i] >= item.at) {
+      serverMediaTimes.splice(i, 1);
+      return true;
+    }
   }
   return false;
 }
@@ -333,14 +350,23 @@ export struct NativeMessages {
       if (mine.length > 0) {
         // Drop optimistic bubbles the server has since echoed back, so a real
         // send does not appear twice.
-        const serverTexts: Record<string, boolean> = {};
+        const serverTexts: Record<string, number[]> = {};
+        const serverMediaTimes: number[] = [];
         for (let s: number = 0; s < list[i].messages.length; s++) {
           const server: NativeChatMessage = list[i].messages[s];
-          serverTexts[server.text.trim()] = true;
+          if (server.outgoing && server.text.trim() !== '') {
+            const key: string = server.text.trim();
+            const times: number[] = serverTexts[key] ?? [];
+            times.push(server.at);
+            serverTexts[key] = times;
+          }
+          if (server.outgoing && server.kind === 'post') {
+            serverMediaTimes.push(server.at);
+          }
         }
         const fresh: NativeChatMessage[] = [];
         for (let m: number = 0; m < mine.length; m++) {
-          if (!hasServerEcho(mine[m], serverTexts)) {
+          if (!takeServerEcho(mine[m], serverTexts, serverMediaTimes)) {
             fresh.push(mine[m]);
           }
         }
@@ -399,13 +425,22 @@ export struct NativeMessages {
     }
     const mine: NativeChatMessage[] = conversation.messages.filter(
       (m: NativeChatMessage) => m.id.indexOf('sent-') === 0);
-    const serverTexts: Record<string, boolean> = {};
+    const serverTexts: Record<string, number[]> = {};
+    const serverMediaTimes: number[] = [];
     for (let s: number = 0; s < server.length; s++) {
-      serverTexts[server[s].text.trim()] = true;
+      if (server[s].outgoing && server[s].text.trim() !== '') {
+        const key: string = server[s].text.trim();
+        const times: number[] = serverTexts[key] ?? [];
+        times.push(server[s].at);
+        serverTexts[key] = times;
+      }
+      if (server[s].outgoing && server[s].kind === 'post') {
+        serverMediaTimes.push(server[s].at);
+      }
     }
     const fresh: NativeChatMessage[] = [];
     for (let m: number = 0; m < mine.length; m++) {
-      if (!hasServerEcho(mine[m], serverTexts)) {
+      if (!takeServerEcho(mine[m], serverTexts, serverMediaTimes)) {
         fresh.push(mine[m]);
       }
     }
@@ -502,6 +537,9 @@ export struct NativeMessages {
         this.composerText = '';
       } else if (payload.state === 'cancelled' ||
         payload.state === 'navigation-cancelled') {
+        if (result.localMessageId !== undefined && result.localMessageId !== '') {
+          this.removePendingMessage(result.localMessageId, false);
+        }
         this.attachment = { name: '', size: 0, mimeType: '', preview: '' };
         this.sending = false;
       } else {
@@ -1005,6 +1043,7 @@ export struct NativeMessages {
           .borderRadius(TOOL_BUTTON / 2)
           .padding({ left: S12, right: S12 })
           .enterKeyType(EnterKeyType.Send)
+          .enabled(!this.sending)
           .onSubmit(() => {
             this.sendMessage();
           })

@@ -404,6 +404,7 @@ struct MainTabs {
   private dmMediaConversation: string = '';
   private dmMediaPreviewUri: string = '';
   private pendingDmMediaSend: string = '';
+  private pendingDmMediaBridgeId: string = '';
   private pendingDmMediaConversation: string = '';
   // Last count handed to the launcher, so the shell only calls out when it
   // actually changes.
@@ -440,28 +441,39 @@ struct MainTabs {
       this.dmMediaPickConversation = conversationId;
     });
     this.bridge.setDmMediaResultHandler((conversationId: string, json: string) => {
+      let value: DmMediaPayload | undefined = undefined;
+      try {
+        value = JSON.parse(json) as DmMediaPayload;
+      } catch (err) {
+        return;
+      }
+      const activePick: boolean = conversationId === this.dmMediaPickConversation;
+      const activeSelected: boolean = conversationId === this.dmMediaConversation;
+      const activeSend: boolean = conversationId === this.pendingDmMediaConversation;
+      if (!activePick && !activeSelected && !activeSend) {
+        // A picker can finish after the user left a conversation. The page
+        // still owns a File in that case, so revoke it instead of publishing a
+        // stale callback into whichever conversation is visible now.
+        this.clearDmMediaForConversation(conversationId);
+        return;
+      }
       let payload: string = json;
-      let localMessageId: string = this.pendingDmMediaSend;
-      if (conversationId === this.dmMediaPickConversation && this.dmMediaPreviewUri !== '') {
+      const localMessageId: string = activeSend ? this.pendingDmMediaSend : '';
+      if (activePick && this.dmMediaPreviewUri !== '') {
         try {
-          const value: DmMediaPayload = JSON.parse(json) as DmMediaPayload;
-          if (value.state === 'selected') {
+          if (value !== undefined && value.state === 'selected') {
             value.previewUri = this.dmMediaPreviewUri;
             payload = JSON.stringify(value);
           }
         } catch (err) {
         }
       }
-      if (conversationId === this.dmMediaPickConversation) {
-        try {
-          const value: DmMediaPayload = JSON.parse(json) as DmMediaPayload;
-          if (value.state === 'selected') {
-            this.dmMediaConversation = conversationId;
-          } else if (value.state === 'cancelled' ||
-            value.state === 'navigation-cancelled') {
-            this.dmMediaConversation = '';
-          }
-        } catch (err) {
+      if (activePick) {
+        if (value !== undefined && value.state === 'selected') {
+          this.dmMediaConversation = conversationId;
+        } else if (value !== undefined && (value.state === 'cancelled' ||
+          value.state === 'navigation-cancelled')) {
+          this.dmMediaConversation = '';
         }
       }
       this.dmMediaResultJson = JSON.stringify({
@@ -802,7 +814,7 @@ struct MainTabs {
   // `key` says what the read is about (conversation, query, handle), so a reply
   // that arrives after the user moved on is dropped instead of overwriting the
   // surface they are looking at now.
-  private runBridge(name: string, script: string, key: string): void {
+  private runBridge(name: string, script: string, key: string): string {
     this.bridgeSeq++;
     const id: string = name + '-' + this.bridgeSeq.toString();
     this.bridgePending.set(id, { name: name, key: key, at: Date.now() });
@@ -833,6 +845,7 @@ struct MainTabs {
         this.applyBridgeResult(name, key, '{"state":"error"}');
       }
     }, name === 'sendDmMedia' ? MainTabs.MEDIA_BRIDGE_TIMEOUT_MS : MainTabs.BRIDGE_TIMEOUT_MS);
+    return id;
   }
 
   // A full page load replaces the page's JavaScript context, so any read still
@@ -874,6 +887,7 @@ struct MainTabs {
       this.dmMediaPickConversation = '';
       this.dmMediaConversation = '';
       this.pendingDmMediaSend = '';
+      this.pendingDmMediaBridgeId = '';
       this.pendingDmMediaConversation = '';
       this.dmMediaPreviewUri = '';
     }
@@ -984,7 +998,7 @@ struct MainTabs {
       if (json.indexOf('"state":"ok"') >= 0) {
         this.sendStateJson = JSON.stringify({ state: 'ok', messageId: key });
         this.tick();
-        if (conversationId !== '') {
+        if (conversationId !== '' && this.chatOpen && this.threadId === conversationId) {
           this.refreshThread(conversationId);
         }
         this.refreshDms();
@@ -1001,6 +1015,7 @@ struct MainTabs {
       }
       this.pendingDmMediaSend = '';
       const conversationId: string = this.pendingDmMediaConversation;
+      this.pendingDmMediaBridgeId = '';
       this.pendingDmMediaConversation = '';
       this.dmMediaResultJson = JSON.stringify({
         conversationId: conversationId,
@@ -2086,13 +2101,20 @@ struct MainTabs {
     this.pendingDmMediaSend = messageId;
     this.pendingDmMediaConversation = conversationId;
     this.dmMediaPickConversation = '';
-    this.runBridge('sendDmMedia', dmMediaUploadScript(conversationId, text), messageId);
+    const bridgeId: string = this.runBridge('sendDmMedia',
+      dmMediaUploadScript(conversationId, text), messageId);
+    if (this.pendingDmMediaSend === messageId) {
+      this.pendingDmMediaBridgeId = bridgeId;
+    }
   }
 
   private clearDmMedia(): void {
     const conversationId: string = this.dmMediaPickConversation !== '' ?
       this.dmMediaPickConversation :
       (this.dmMediaConversation !== '' ? this.dmMediaConversation : this.pendingDmMediaConversation);
+    if (this.pendingDmMediaBridgeId !== '') {
+      this.bridgePending.delete(this.pendingDmMediaBridgeId);
+    }
     if (conversationId !== '') {
       try {
         this.controller.runJavaScript(dmMediaClearScript(conversationId));
@@ -2102,6 +2124,7 @@ struct MainTabs {
     this.dmMediaPickConversation = '';
     this.dmMediaConversation = '';
     this.pendingDmMediaSend = '';
+    this.pendingDmMediaBridgeId = '';
     this.pendingDmMediaConversation = '';
     this.dmMediaPreviewUri = '';
   }
@@ -2114,6 +2137,29 @@ struct MainTabs {
       this.controller.runJavaScript(dmMediaClearScript(conversationId));
     } catch (err) {
     }
+  }
+
+  private cancelDmMediaForConversation(conversationId: string): void {
+    if (conversationId === '') {
+      return;
+    }
+    if (this.pendingDmMediaConversation === conversationId &&
+      this.pendingDmMediaBridgeId !== '') {
+      this.bridgePending.delete(this.pendingDmMediaBridgeId);
+    }
+    this.clearDmMediaForConversation(conversationId);
+    if (this.dmMediaPickConversation === conversationId) {
+      this.dmMediaPickConversation = '';
+    }
+    if (this.dmMediaConversation === conversationId) {
+      this.dmMediaConversation = '';
+    }
+    if (this.pendingDmMediaConversation === conversationId) {
+      this.pendingDmMediaSend = '';
+      this.pendingDmMediaBridgeId = '';
+      this.pendingDmMediaConversation = '';
+    }
+    this.dmMediaPreviewUri = '';
   }
 
   private muteDm(conversationId: string, muted: boolean): void {
@@ -3680,14 +3726,7 @@ struct MainTabs {
             this.sendDmMedia(id, text, messageId);
           },
           onRemoveAttachment: (id: string) => {
-            if (this.dmMediaPickConversation === id) {
-              this.dmMediaPickConversation = '';
-            }
-            if (this.pendingDmMediaConversation === id) {
-              this.pendingDmMediaConversation = '';
-            }
-            this.dmMediaPreviewUri = '';
-            this.clearDmMediaForConversation(id);
+            this.cancelDmMediaForConversation(id);
           },
           onMuteConversation: (id: string, muted: boolean) => {
             this.muteDm(id, muted);

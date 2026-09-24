@@ -77,6 +77,16 @@ check('chat composer previews and removes attachments',
   messages.includes('attachment.preview') &&
   messages.includes('messages_remove_attachment') &&
   messages.includes('onRemoveAttachment'));
+check('chat echo matching is timestamped and one-to-one',
+  messages.includes('function takeServerEcho(') &&
+  messages.includes('serverTexts: Record<string, number[]>') &&
+  messages.includes('serverMediaTimes: number[]') &&
+  messages.includes('times.splice(i, 1)') &&
+  messages.includes('serverMediaTimes.splice(i, 1)'));
+check('chat media cancellation removes the optimistic row',
+  messages.includes("payload.state === 'navigation-cancelled'") &&
+  messages.includes('this.removePendingMessage(result.localMessageId, false)'));
+check('chat composer is locked while sending', messages.includes('.enabled(!this.sending)'));
 // 3. Components exist and own their states ------------------------------------
 const components = [
   'entry/src/main/ets/components/NativeHome.ets',
@@ -105,6 +115,20 @@ check('chat media sends are isolated from text sends',
   main.includes('dmMediaUploadScript') &&
   chrome.includes('/i/api/1.1/dm/new2.json') &&
   chrome.includes('upload.x.com/i/media/upload.json'));
+check('media callbacks are scoped to the active conversation',
+  main.includes('const activePick: boolean') &&
+  main.includes('const activeSelected: boolean') &&
+  main.includes('const activeSend: boolean') &&
+  main.includes('this.clearDmMediaForConversation(conversationId)'));
+check('media sends own a cancellable bridge token',
+  main.includes('pendingDmMediaBridgeId') &&
+  main.includes('private cancelDmMediaForConversation') &&
+  main.includes('this.bridgePending.delete(this.pendingDmMediaBridgeId)'));
+check('closing media work removes its pending bridge',
+  main.includes('if (this.pendingDmMediaBridgeId !== \'\')') &&
+  main.includes('this.bridgePending.delete(this.pendingDmMediaBridgeId)'));
+check('late text send does not refresh a closed thread',
+  main.includes('this.chatOpen && this.threadId === conversationId'));
 check('notification taps open the real status route',
   main.includes("TWITTER_BASE + '/i/web/status/' + targetId"));
 check('user-facing routes reveal the session web surface',
