@@ -24,6 +24,7 @@ export interface NativePost {
 
 export interface NativeNotificationItem {
   id: string;
+  targetId: string;
   kind: string;
   name: string;
   handle: string;

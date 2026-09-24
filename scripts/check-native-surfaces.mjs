@@ -89,7 +89,12 @@ check('Home pages with LazyForEach', home.includes('LazyForEach'));
 check('Home has loading state', home.includes("'loading'") || home.includes('"loading"'));
 check('Home has signed-out state', home.includes('signed-out'));
 check('Home has empty state', home.includes('empty'));
+const notifications = read('entry/src/main/ets/components/NativeNotifications.ets');
+check('notification rows carry a target post', notifications.includes('targetId') &&
+  notifications.includes('this.onOpenItem(item.id, item.targetId)'));
 const main = read('entry/src/main/ets/pages/MainTabs.ets');
+check('notification taps open the real status route',
+  main.includes("TWITTER_BASE + '/i/web/status/' + targetId"));
 for (const token of ['homeJson', 'notifListJson', 'profileJson', 'trendsJson', 'searchJson', 'threadJson']) {
   check(`shell owns ${token}`, main.includes(token));
 }

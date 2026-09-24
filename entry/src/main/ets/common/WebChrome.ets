@@ -292,8 +292,8 @@ export function notificationsScript(): string {
     'var txt=tw?otText(tw.full_text||tw.text).slice(0,180):"";' +
     'var nm=u?(u.name||u.screen_name||""):"";' +
     'if(!nm&&!txt)continue;' +
-    'out.push({id:String(nn.id||e.entryId||(i+"-"+j)),kind:kind,name:nm,handle:u?(u.screen_name||""):"",' +
-    'avatar:av(u),text:txt,at:otTime(e.sortIndex)});}}' +
+    'out.push({id:String(nn.id||e.entryId||(i+"-"+j)),targetId:tt.length?String(tt[0]):"",' +
+    'kind:kind,name:nm,handle:u?(u.screen_name||""):"",avatar:av(u),text:txt,at:otTime(e.sortIndex)});}}' +
     'if(!out.length)return JSON.stringify({state:"empty"});' +
     'return JSON.stringify({state:"ok",items:out});');
 }

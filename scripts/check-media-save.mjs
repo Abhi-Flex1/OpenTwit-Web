@@ -43,6 +43,12 @@ check('post image exposes a download target', card.includes('post-media-save-') 
   card.includes('savingMedia') && card.includes('sys.symbol.download'));
 check('secure save control is outside post rows', main.includes('mediaSaveSheetView') &&
   main.includes('bindSheet($$this.mediaSaveSheet'));
+check('save sheet exposes a ready state', main.includes('post_media_ready') &&
+  main.includes('this.mediaSaveReady'));
+check('save authorization failures remain retryable', main.includes('TEMPORARY_AUTHORIZATION_FAILED') &&
+  main.includes('userCancelEvent(true)'));
+check('overlapping media saves are ignored', main.includes('mediaSaveDownloading') &&
+  main.includes('mediaSaveSheet') && main.includes('mediaSavePath'));
 check('prepared save data is cleaned when the sheet disappears',
   main.includes('onDisAppear') && main.includes('cancelPreparedImage()'));
 check('Home and Profile both own the callback', home.includes('onSaveMedia') &&

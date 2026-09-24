@@ -437,6 +437,10 @@
       "value": "جارٍ تنزيل الصورة…"
     },
     {
+      "name": "post_media_ready",
+      "value": "جاهزة للحفظ"
+    },
+    {
       "name": "post_media_saved",
       "value": "تم حفظ الصورة"
     },

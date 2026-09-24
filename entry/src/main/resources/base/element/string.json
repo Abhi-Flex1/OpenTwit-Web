@@ -437,6 +437,10 @@
       "value": "Downloading image…"
     },
     {
+      "name": "post_media_ready",
+      "value": "Ready to save"
+    },
+    {
       "name": "post_media_saved",
       "value": "Image saved"
     },

@@ -376,6 +376,7 @@ const notifPath = '/i/api/2/notifications/all.json?count=40';
 r = await run(scripts.notifications, { cookie: 'ct0=TOK', scripts: [BEARER_SCRIPT], routes: { [notifPath]: notifV2 } });
 check('notifications ok', r.out.state === 'ok' && r.out.items.length === 1, JSON.stringify(r.out).slice(0, 160));
 check('notifications fields', r.out.items[0]?.kind === 'like' && r.out.items[0]?.handle === 'ned' && r.out.items[0]?.text === 'great post indeed' && r.out.items[0]?.at === 1790000000001);
+check('notifications carry a target post', r.out.items[0]?.targetId === 'nt');
 
 r = await run(scripts.notifications, { cookie: 'ct0=TOK', scripts: [BEARER_SCRIPT], routes: { [notifPath]: { globalObjects: {}, timeline: { instructions: [] } } } });
 check('notifications none → empty', r.out.state === 'empty', r.out.state);

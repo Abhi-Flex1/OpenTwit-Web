@@ -15,7 +15,7 @@ import {
 } from '../common/Theme';
 import {
   TWITTER_BASE, TWITTER_ROUTES, TWITTER_COMPOSE, TWITTER_UA,
-  TWITTER_SIGNUP, TWITTER_LOGIN, TWITTER_NOTIF_SETTINGS, TWITTER_EDIT_PROFILE,
+  TWITTER_SIGNUP, TWITTER_LOGIN, TWITTER_NOTIFICATIONS, TWITTER_NOTIF_SETTINGS, TWITTER_EDIT_PROFILE,
   TWITTER_SETTINGS, TWITTER_BOOKMARKS,
   searchUrl, profileUrl, listsUrl, pathOf, routeIndexForUrl, profileHandleForUrl,
   isTabRootPath, userAgentFor
@@ -278,6 +278,8 @@ struct MainTabs {
   @State mediaSaveId: string = '';
   @State mediaSaveSheet: boolean = false;
   @State mediaSaveBusy: boolean = false;
+  @State mediaSaveDownloading: boolean = false;
+  @State mediaSaveReady: boolean = false;
   // True while the shell is reading the signed-in handle behind a native panel.
   @State discovering: boolean = false;
   // The page's own title (x.com's " / X" suffix stripped) and whether there is
@@ -1906,6 +1908,11 @@ struct MainTabs {
   }
 
   private async savePostImage(url: string, id: string): Promise<string> {
+    if (this.mediaSaveBusy || this.mediaSaveDownloading || this.mediaSaveSheet ||
+      this.mediaSavePath !== '') {
+      hilog.info(DOMAIN, TAG, 'media save already open; ignoring duplicate request');
+      return MEDIA_SAVE_CANCELLED;
+    }
     hilog.info(DOMAIN, TAG, 'media save start: %{public}s', id);
     const ctx: common.Context | undefined = this.getUIContext().getHostContext();
     if (ctx === undefined) {
@@ -1913,15 +1920,21 @@ struct MainTabs {
       this.toast($r('app.string.post_media_save_failed'));
       return MEDIA_SAVE_FAILED;
     }
+    this.mediaSaveDownloading = true;
     this.toast($r('app.string.post_media_downloading'));
-    const sourcePath: string = await prepareRemoteImage(
-      ctx as common.UIAbilityContext, url, id);
+    let sourcePath: string = '';
+    try {
+      sourcePath = await prepareRemoteImage(ctx as common.UIAbilityContext, url, id);
+    } finally {
+      this.mediaSaveDownloading = false;
+    }
     if (sourcePath === '') {
       this.toast($r('app.string.post_media_save_failed'));
       return MEDIA_SAVE_FAILED;
     }
     this.mediaSavePath = sourcePath;
     this.mediaSaveId = id;
+    this.mediaSaveReady = true;
     this.mediaSaveSheet = true;
     return MEDIA_SAVE_CANCELLED;
   }
@@ -1959,6 +1972,7 @@ struct MainTabs {
     this.mediaSavePath = '';
     this.mediaSaveId = '';
     this.mediaSaveBusy = false;
+    this.mediaSaveReady = false;
   }
 
   private static nextCursor(json: string): string {
@@ -3288,7 +3302,12 @@ struct MainTabs {
           onRefresh: () => {
             this.refreshNotifList();
           },
-          onOpenItem: (id: string) => {
+          onOpenItem: (id: string, targetId: string) => {
+            if (targetId !== '') {
+              this.loadWeb(TWITTER_BASE + '/i/web/status/' + targetId);
+            } else {
+              this.loadWeb(TWITTER_NOTIFICATIONS);
+            }
           },
           onSignIn: () => {
             this.openWebLogin();
@@ -3515,7 +3534,9 @@ struct MainTabs {
         .fontFamily(FONT_FAMILY)
         .fontWeight(FontWeight.Medium)
         .fontColor($r('sys.color.ohos_id_color_text_primary'))
-      Text($r('app.string.post_media_downloading'))
+      Text(this.mediaSaveReady
+        ? $r('app.string.post_media_ready')
+        : $r('app.string.post_media_downloading'))
         .fontSize(14)
         .fontFamily(FONT_FAMILY)
         .fontColor($r('sys.color.ohos_id_color_text_secondary'))
@@ -3528,14 +3549,18 @@ struct MainTabs {
         .height(52)
         .fontSize(16)
         .backgroundColor($r('sys.color.ohos_id_color_emphasize'))
-        .enabled(!this.mediaSaveBusy)
+        .enabled(this.mediaSaveReady && !this.mediaSaveBusy)
         .onClick(async (event: ClickEvent, result: SaveButtonOnClickResult) => {
           if (result === SaveButtonOnClickResult.SUCCESS) {
             await this.commitPreparedImage();
           } else if (result === SaveButtonOnClickResult.CANCELED_BY_USER) {
             await this.cancelPreparedImage();
+          } else if (result === SaveButtonOnClickResult.TEMPORARY_AUTHORIZATION_FAILED) {
+            hilog.warn(DOMAIN, TAG, 'media save authorization failed');
+            this.toast($r('app.string.post_media_save_failed'));
           }
         })
+        .userCancelEvent(true)
       Button($r('app.string.compose_cancel'))
         .width(180)
         .height(44)

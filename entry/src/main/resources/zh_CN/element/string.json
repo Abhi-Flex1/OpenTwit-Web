@@ -437,6 +437,10 @@
       "value": "正在下载图片…"
     },
     {
+      "name": "post_media_ready",
+      "value": "可以保存"
+    },
+    {
       "name": "post_media_saved",
       "value": "图片已保存"
     },

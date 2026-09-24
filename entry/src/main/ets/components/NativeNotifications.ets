@@ -4,6 +4,7 @@ import { NativeSignIn } from './NativeSignIn';
 
 interface BridgeNotifItem {
   id: string;
+  targetId: string;
   kind: string;
   name: string;
   handle: string;
@@ -28,7 +29,7 @@ export struct NativeNotifications {
   @State refreshing: boolean = false;
   onRefresh: () => void = () => {
   };
-  onOpenItem: (id: string) => void = () => {
+  onOpenItem: (id: string, targetId: string) => void = () => {
   };
   onSignIn: () => void = () => {
   };
@@ -52,6 +53,7 @@ export struct NativeNotifications {
           }
           out.push({
             id: n.id ?? ('n-' + i),
+            targetId: n.targetId ?? '',
             kind: n.kind ?? 'mention',
             name: n.name ?? '',
             handle: n.handle ?? '',
@@ -204,7 +206,7 @@ export struct NativeNotifications {
       .padding({ left: S20, right: S20, top: S12, bottom: S12 })
       .alignItems(VerticalAlign.Top)
       .onClick(() => {
-        this.onOpenItem(item.id);
+        this.onOpenItem(item.id, item.targetId);
       })
     }
   }
