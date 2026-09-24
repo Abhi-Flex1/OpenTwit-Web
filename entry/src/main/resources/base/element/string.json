@@ -409,6 +409,14 @@
       "value": "Try a different search."
     },
     {
+      "name": "explore_search_title",
+      "value": "Search"
+    },
+    {
+      "name": "explore_view_all_results",
+      "value": "View all results on X"
+    },
+    {
       "name": "post_reply",
       "value": "Reply"
     },

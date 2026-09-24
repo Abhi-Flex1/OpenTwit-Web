@@ -1376,6 +1376,9 @@ struct MainTabs {
 
   private webDetailTitleForUrl(url: string): string {
     const path: string = pathOf(url);
+    if (path === '/search' || path.indexOf('/search/') === 0) {
+      return this.localized($r('app.string.explore_search_title'));
+    }
     if (path.indexOf('/status/') >= 0) {
       return this.localized($r('app.string.post'));
     }
@@ -3878,6 +3881,11 @@ struct MainTabs {
           },
           onOpenTrend: (name: string) => {
             this.searchText = name;
+          },
+          onOpenFullSearch: (query: string) => {
+            if (query !== '') {
+              this.openWebDetail(searchUrl(query));
+            }
           },
           onSignIn: () => {
             this.openWebLogin();

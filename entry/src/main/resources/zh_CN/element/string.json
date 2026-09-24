@@ -409,6 +409,14 @@
       "value": "换个关键词试试。"
     },
     {
+      "name": "explore_search_title",
+      "value": "搜索"
+    },
+    {
+      "name": "explore_view_all_results",
+      "value": "在 X 上查看全部结果"
+    },
+    {
       "name": "post_reply",
       "value": "回复"
     },

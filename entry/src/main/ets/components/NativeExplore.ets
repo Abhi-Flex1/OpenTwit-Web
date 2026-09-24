@@ -33,6 +33,8 @@ export struct NativeExplore {
   };
   onOpenTrend: (name: string) => void = () => {
   };
+  onOpenFullSearch: (query: string) => void = () => {
+  };
   onSignIn: () => void = () => {
   };
 
@@ -101,6 +103,25 @@ export struct NativeExplore {
   // shell). Typing alone keeps trends on screen instead of a spinner.
   private hasResults(): boolean {
     return this.searchJson !== '';
+  }
+
+  @Builder
+  fullSearchAction() {
+    if (this.hasQuery()) {
+      Button($r('app.string.explore_view_all_results'))
+        .type(ButtonType.Capsule)
+        .fontFamily(FONT_FAMILY)
+        .fontSize(15)
+        .fontWeight(FontWeight.Medium)
+        .backgroundColor($r('sys.color.ohos_id_color_emphasize'))
+        .width('100%')
+        .margin({ top: S12, bottom: S8 })
+        .accessibilityText($r('app.string.explore_view_all_results'))
+        .accessibilityLevel('yes')
+        .onClick(() => {
+          this.onOpenFullSearch(this.searchText.trim());
+        })
+    }
   }
 
   @Builder
@@ -248,15 +269,19 @@ export struct NativeExplore {
             $r('app.string.explore_no_results_title'),
             $r('app.string.explore_no_results_message'))
         } else {
-          List({ space: 0 }) {
-            ForEach(this.results, (item: NativeTrend, index: number) => {
-              this.trendRow(item, index)
-            }, (item: NativeTrend) => item.name)
+          Column({ space: 0 }) {
+            List({ space: 0 }) {
+              ForEach(this.results, (item: NativeTrend, index: number) => {
+                this.trendRow(item, index)
+              }, (item: NativeTrend) => item.name)
+            }
+            .layoutWeight(1)
+            .width('100%')
+            .edgeEffect(EdgeEffect.Spring)
+            this.fullSearchAction()
           }
           .layoutWeight(1)
           .width('100%')
-          .padding({ bottom: S8 })
-          .edgeEffect(EdgeEffect.Spring)
         }
       }
     }

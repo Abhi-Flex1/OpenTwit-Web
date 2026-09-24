@@ -121,6 +121,7 @@ for (const c of components) {
 }
 const home = read('entry/src/main/ets/components/NativeHome.ets');
 const postCard = read('entry/src/main/ets/components/NativePostCard.ets');
+const explore = read('entry/src/main/ets/components/NativeExplore.ets');
 check('Home pages with LazyForEach', home.includes('LazyForEach'));
 check('Home has loading state', home.includes("'loading'") || home.includes('"loading"'));
 check('Home has signed-out state', home.includes('signed-out'));
@@ -137,6 +138,9 @@ const profile = read('entry/src/main/ets/components/NativeProfile.ets');
 check('Home and Profile forward author navigation',
   home.includes('onOpenProfile: (handle: string)') &&
   profile.includes('onOpenProfile: (handle: string)'));
+check('Explore hands verified suggestions to full X search',
+  explore.includes('onOpenFullSearch: (query: string)') &&
+  explore.includes('explore_view_all_results'));
 check('external profiles do not show Edit profile',
   profile.includes('@Prop isOwnProfile: boolean = false;') &&
   profile.includes('if (this.isOwnProfile) {'));
@@ -148,6 +152,10 @@ check('shell opens a native profile from an author tap',
   main.includes('private openProfile(handle: string)') &&
   main.includes('onOpenProfile: (handle: string)') &&
   main.includes('this.openProfile(handle)'));
+check('shell opens the authenticated full-search route',
+  main.includes('private openWebDetail') &&
+  main.includes('searchUrl(query)') &&
+  main.includes('explore_search_title'));
 check('shell owns profile action staging and completion',
   main.includes('private runProfileAction') &&
   main.includes('private stageProfileAction') &&
@@ -245,7 +253,8 @@ const required = [
   'notif_empty_title', 'notif_liked', 'notif_followed',
   'profile_edit', 'profile_follow', 'profile_following', 'profile_action_failed',
   'profile_followers', 'profile_no_posts',
-  'explore_trends_title', 'explore_no_results_title',
+  'explore_trends_title', 'explore_no_results_title', 'explore_search_title',
+  'explore_view_all_results',
   'post_like', 'post_repost', 'post_bookmark', 'post_unbookmark', 'post_action_failed',
   'messages_loading_thread', 'messages_send_unavailable',
   'signin_title', 'signin_message', 'signin_benefit_home', 'signin_button', 'signin_note'
