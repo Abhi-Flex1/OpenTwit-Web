@@ -147,7 +147,8 @@ const dmInbox = {
       u1: { id_str: 'u1', name: 'Ann', screen_name: 'ann', profile_image_url_https: 'https://x/b_normal.jpg' }
     },
     conversations: {
-      c1: { type: 'ONE_TO_ONE', participants: [{ user_id: 'me' }, { user_id: 'u1' }], muted: false }
+      c1: { type: 'ONE_TO_ONE', participants: [{ user_id: 'me' }, { user_id: 'u1' }], muted: false,
+        last_read_event_id: '0', max_entry_id: 'm1' }
     },
     entries: [
       { message: { conversation_id: 'c1', time: '1788000000000', message_data: { text: 'hello there', sender_id: 'u1' } } }
@@ -236,6 +237,35 @@ check('dm signed-out', r.out.state === 'signed-out', r.out.state);
 r = await run(scripts.dmInbox, { cookie: 'ct0=TOK', scripts: [BEARER_SCRIPT], routes: { [inboxPath]: dmInbox } });
 check('dm ok', r.out.state === 'ok' && r.out.conversations.length === 1, JSON.stringify(r.out).slice(0, 120));
 check('dm fields', r.out.conversations[0]?.handle === 'ann' && r.out.conversations[0]?.text === 'hello there' && r.out.conversations[0]?.uid === 'u1' && r.out.conversations[0]?.out === false);
+check('dm derives unread from read marker', r.out.conversations[0]?.unread === 1, JSON.stringify(r.out.conversations[0]));
+
+const dmSend = build('dmSendScript', {
+  rid: JSON.stringify('u1'),
+  cid: JSON.stringify('c1'),
+  body: JSON.stringify('hello')
+});
+const dmSendGroup = build('dmSendScript', {
+  rid: JSON.stringify(''),
+  cid: JSON.stringify('group-1'),
+  body: JSON.stringify('group hello')
+});
+r = await run(dmSend, { cookie: 'ct0=TOK', scripts: [BEARER_SCRIPT], routes: {
+  '/i/api/1.1/direct_messages/events/new.json': { ok: true }
+}});
+check('dm send uses recipient target', r.out.state === 'ok', JSON.stringify(r.out));
+r = await run(dmSendGroup, { cookie: 'ct0=TOK', scripts: [BEARER_SCRIPT], routes: {
+  '/i/api/1.1/direct_messages/events/new.json': { ok: true }
+}});
+check('dm group send falls back to conversation target', r.out.state === 'ok', JSON.stringify(r.out));
+
+const dmMute = build('dmMuteScript', {
+  cid: JSON.stringify('c1'),
+  path: '/i/api/1.1/mutes/conversations/create.json'
+});
+r = await run(dmMute, { cookie: 'ct0=TOK', scripts: [BEARER_SCRIPT], routes: {
+  '/i/api/1.1/mutes/conversations/create.json': { ok: true }
+}});
+check('dm mute uses conversation route', r.out.state === 'ok', JSON.stringify(r.out));
 
 r = await run(scripts.dmInbox, { cookie: 'ct0=TOK', scripts: [BEARER_SCRIPT], routes: { [inboxPath]: 401 } });
 check('dm http-401 → signed-out', r.out.state === 'signed-out', r.out.state);

@@ -233,6 +233,10 @@
       "value": "Unmuted"
     },
     {
+      "name": "messages_mute_unavailable",
+      "value": "Couldn't update mute. Try again."
+    },
+    {
       "name": "messages_archive",
       "value": "Archive"
     },

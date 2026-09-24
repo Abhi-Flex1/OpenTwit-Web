@@ -233,6 +233,10 @@
       "value": "تم إلغاء الكتم"
     },
     {
+      "name": "messages_mute_unavailable",
+      "value": "تعذّر تحديث الكتم. حاول مرة أخرى."
+    },
+    {
       "name": "messages_archive",
       "value": "أرشفة"
     },

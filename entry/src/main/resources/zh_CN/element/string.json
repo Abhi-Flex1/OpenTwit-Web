@@ -233,6 +233,10 @@
       "value": "已取消静音"
     },
     {
+      "name": "messages_mute_unavailable",
+      "value": "无法更新静音状态，请重试。"
+    },
+    {
       "name": "messages_archive",
       "value": "归档"
     },

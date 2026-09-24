@@ -24,7 +24,7 @@ import {
   OWN_HANDLE_SCRIPT, chromeScript, chromeFlagScript, scrollToTopScript,
   CLICK_POST_BUTTON_SCRIPT, PROFILE_BOOTSTRAP_SCRIPT, fillComposerScript,
   HOME_TAB_SCRIPT, selectHomeTabScript, AVATAR_SCRIPT, UNREAD_COUNTS_SCRIPT,
-  ONLINE_PATCH, immersiveInsetScript, dmInboxScript, dmThreadScript, dmSendScript,
+  ONLINE_PATCH, immersiveInsetScript, dmInboxScript, dmThreadScript, dmSendScript, dmMuteScript,
   notificationsScript, homeTimelineScript, profileScript, trendsScript,
   searchTweetsScript, postActionScript, sessionIdentityScript, SESSION_WATCHER
 } from '../common/WebChrome';
@@ -163,6 +163,7 @@ interface DmBridgeConversation {
   out: boolean;
   at: number;
   muted: boolean;
+  unread: number;
 }
 
 interface DmBridgePayload {
@@ -283,6 +284,7 @@ struct MainTabs {
   // bridge JSON for its surface; the surface parses and renders it.
   @State threadJson: string = '';
   @State threadId: string = '';
+  @State sendStateJson: string = '';
   @State homeJson: string = '';
   @State notifListJson: string = '';
   @State profileJson: string = '';
@@ -336,6 +338,7 @@ struct MainTabs {
   private pendingThreadId: string = '';
   // How many times each surface has been re-read after a transient failure.
   private bridgeRetries: Record<string, number> = {};
+  private pendingSendConversations: Map<string, string> = new Map<string, string>();
   // Last count handed to the launcher, so the shell only calls out when it
   // actually changes.
   private badgeShown: number = -1;
@@ -700,7 +703,11 @@ struct MainTabs {
     } catch (err) {
       this.bridgePending.delete(id);
       hilog.info(DOMAIN, TAG, '%{public}s read could not start', name);
-      this.retryBridgeSoon(name);
+      if (name === 'sendDm') {
+        this.applyBridgeResult(name, key, '{"state":"error"}');
+      } else {
+        this.retryBridgeSoon(name);
+      }
     }
     setTimeout(() => {
       if (this.bridgePending.has(id)) {
@@ -718,6 +725,12 @@ struct MainTabs {
     if (this.bridgePending.size > 0) {
       hilog.debug(DOMAIN, TAG, 'page load: dropping %{public}d pending read(s)',
         this.bridgePending.size);
+      this.bridgePending.forEach((entry: BridgePending) => {
+        if (entry.name === 'sendDm') {
+          this.sendStateJson = JSON.stringify({ state: 'error', messageId: entry.key });
+          this.pendingSendConversations.delete(entry.key);
+        }
+      });
       this.bridgePending.clear();
     }
   }
@@ -731,7 +744,9 @@ struct MainTabs {
     // A read that lands while the page is still settling comes back as an
     // error or empty. Retry it in a couple of seconds rather than leaving the
     // surface showing a failure until the next full poll (25 s on Home).
-    if (json.indexOf('"state":"error"') >= 0 || json.indexOf('"state":"unexpected"') >= 0) {
+    const isWriteBridge: boolean = name === 'sendDm' || name === 'dmMute' || name === 'postAction';
+    if (!isWriteBridge &&
+      (json.indexOf('"state":"error"') >= 0 || json.indexOf('"state":"unexpected"') >= 0)) {
       this.retryBridgeSoon(name);
     } else {
       this.bridgeRetries['retry-' + name] = 0;
@@ -819,14 +834,27 @@ struct MainTabs {
     } else if (name === 'identity') {
       this.applyIdentity(json);
     } else if (name === 'sendDm') {
+      const conversationId: string = this.pendingSendConversations.get(key) ?? '';
+      this.pendingSendConversations.delete(key);
       if (json.indexOf('"state":"ok"') >= 0) {
+        this.sendStateJson = JSON.stringify({ state: 'ok', messageId: key });
         this.tick();
-        this.refreshThread(key);
+        if (conversationId !== '') {
+          this.refreshThread(conversationId);
+        }
         this.refreshDms();
       } else if (json.indexOf('signed-out') >= 0) {
+        this.sendStateJson = JSON.stringify({ state: 'error', messageId: key });
         this.toast($r('app.string.messages_signed_out_title'));
       } else {
+        this.sendStateJson = JSON.stringify({ state: 'error', messageId: key });
         this.toast($r('app.string.messages_send_unavailable'));
+      }
+    } else if (name === 'dmMute') {
+      if (json.indexOf('"state":"ok"') >= 0) {
+        this.refreshDms();
+      } else {
+        this.toast($r('app.string.messages_mute_unavailable'));
       }
     } else if (name === 'postAction') {
       if (json.indexOf('"state":"ok"') >= 0) {
@@ -1748,14 +1776,24 @@ struct MainTabs {
     this.runBridge('thread', dmThreadScript(id), id);
   }
 
-  private sendDm(conversationId: string, recipientId: string, text: string): void {
-    if (!this.signedIn() || text.trim() === '' || recipientId === '') {
-      if (recipientId === '' && text.trim() !== '') {
-        this.toast($r('app.string.messages_send_unavailable'));
-      }
+  private sendDm(conversationId: string, recipientId: string, text: string,
+    messageId: string): void {
+    if (!this.signedIn() || text.trim() === '' || conversationId === '') {
+      this.sendStateJson = JSON.stringify({ state: 'error', messageId: messageId });
+      this.toast($r('app.string.messages_send_unavailable'));
       return;
     }
-    this.runBridge('sendDm', dmSendScript(recipientId, text), conversationId);
+    this.pendingSendConversations.set(messageId, conversationId);
+    this.sendStateJson = JSON.stringify({ state: 'sending', messageId: messageId });
+    this.runBridge('sendDm', dmSendScript(recipientId, text, conversationId), messageId);
+  }
+
+  private muteDm(conversationId: string, muted: boolean): void {
+    if (!this.signedIn() || conversationId === '') {
+      this.toast($r('app.string.messages_mute_unavailable'));
+      return;
+    }
+    this.runBridge('dmMute', dmMuteScript(conversationId, muted), conversationId);
   }
 
   // --- Post actions: the real write behind an optimistic row ------------------
@@ -2578,18 +2616,9 @@ struct MainTabs {
     // login view carries no actions besides Back.
     if (!this.webLoginOpen) {
       if (this.currentIndex === 3 && this.chatOpen) {
-      this.headerIconButton($r('sys.symbol.phone_fill'), $r('app.string.messages_call'),
-        () => {
-          this.toast($r('app.string.messages_call'));
-        })
-      this.headerIconButton($r('sys.symbol.video_fill'), $r('app.string.messages_video'),
-        () => {
-          this.toast($r('app.string.messages_video'));
-        })
-      this.headerIconButton($r('sys.symbol.ellipsis_circle'), $r('app.string.messages_more'),
-        () => {
-          this.toast($r('app.string.messages_more'));
-        })
+      // Calls, video calls, and the overflow menu still belong to the web
+      // client. Do not draw native controls that only show a toast; add them
+      // here when their session-backed actions are implemented.
     } else if (this.currentIndex === 2) {
       this.headerIconButton($r('sys.symbol.gearshape'), $r('app.string.menu_notification_settings'),
         () => {
@@ -3155,8 +3184,12 @@ struct MainTabs {
           onRequestThread: (id: string) => {
             this.startThreadPolling(id);
           },
-          onSendMessage: (id: string, uid: string, text: string) => {
-            this.sendDm(id, uid, text);
+          sendStateJson: this.sendStateJson,
+          onSendMessage: (id: string, uid: string, text: string, messageId: string) => {
+            this.sendDm(id, uid, text, messageId);
+          },
+          onMuteConversation: (id: string, muted: boolean) => {
+            this.muteDm(id, muted);
           },
           onSignIn: () => {
             this.openWebLogin();

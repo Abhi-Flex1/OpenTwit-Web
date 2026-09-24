@@ -136,9 +136,11 @@ export function dmInboxScript(): string {
     'uid=String(u.id_str||u.rest_id||"");' +
     'avatar=(u.profile_image_url_https||"").replace("_normal","_bigger");}' +
     'if(!name&&!handle)return;' +
+    'var lastRead=String(c.last_read_event_id||"");var maxEntry=String(c.max_entry_id||"");' +
+    'var unread=(lastRead!==""&&maxEntry!==""&&maxEntry!==lastRead)?1:0;' +
     'out.push({id:k,name:name,handle:handle,avatar:avatar,uid:uid,' +
     'text:last?last.text:"",out:last?last.out:false,at:last?last.at:0,' +
-    'muted:!!c.muted});});' +
+    'muted:!!c.muted,unread:unread});});' +
     'out.sort(function(a,b){return (b.at||0)-(a.at||0);});' +
     'return JSON.stringify({state:"ok",conversations:out.slice(0,40)});');
 }
@@ -226,14 +228,34 @@ export function dmThreadScript(conversationId: string): string {
 // participant) for one-to-one conversations; group sends address the
 // conversation instead. Anything the API will not accept ends as a state, never
 // as an exception.
-export function dmSendScript(recipientId: string, text: string): string {
+export function dmSendScript(recipientId: string, text: string, conversationId: string): string {
   const rid: string = JSON.stringify(recipientId);
+  const cid: string = JSON.stringify(conversationId);
   const body: string = JSON.stringify(text.slice(0, 1000));
   return pageBridgeScript(
-    'var rid=' + rid + ';var txt=' + body + ';' +
+    'var rid=' + rid + ';var cid=' + cid + ';var txt=' + body + ';' +
     'if(!txt||!txt.trim())return JSON.stringify({state:"empty"});' +
+    'var target=rid?{recipient_id:rid}:{conversation_id:cid};' +
+    'if(!rid&&!cid)return JSON.stringify({state:"empty"});' +
     'var r=await otPost("/i/api/1.1/direct_messages/events/new.json",' +
-    '{event:{type:"message_create",message_create:{target:{recipient_id:rid},message_data:{text:txt}}}});' +
+    '{event:{type:"message_create",message_create:{target:target,message_data:{text:txt}}}});' +
+    'if(r.error)return JSON.stringify({state:r.error});' +
+    'return JSON.stringify({state:"ok"});');
+}
+
+// X's current web client mutes a DM conversation through these two session
+// routes. The field is named `tweet_id` in the client even for conversations;
+// keeping that shape is important because the endpoint rejects a guessed
+// `conversation_id` field.
+export function dmMuteScript(conversationId: string, muted: boolean): string {
+  const cid: string = JSON.stringify(conversationId);
+  const path: string = muted
+    ? '/i/api/1.1/mutes/conversations/create.json'
+    : '/i/api/1.1/mutes/conversations/destroy.json';
+  return pageBridgeScript(
+    'var cid=' + cid + ';' +
+    'if(!cid)return JSON.stringify({state:"empty"});' +
+    'var r=await otPost("' + path + '",{tweet_id:cid});' +
     'if(r.error)return JSON.stringify({state:r.error});' +
     'return JSON.stringify({state:"ok"});');
 }

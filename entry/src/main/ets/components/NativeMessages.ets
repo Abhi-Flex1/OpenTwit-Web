@@ -1,4 +1,3 @@
-import { photoAccessHelper } from '@kit.MediaLibraryKit';
 import {
   FONT_FAMILY, RADIUS_SM, ROW_HEIGHT, S12, S16, S2, S20, S4, S8, TOOL_BUTTON
 } from '../common/Theme';
@@ -10,10 +9,7 @@ export interface NativeChatMessage {
   outgoing: boolean;
   kind: 'text' | 'post';
   time: string;
-  // Name of the picked attachment, or '' when the message is text only. The
-  // bubble draws a chip for it rather than the bitmap: a picker URI is only
-  // readable while the picker's temporary grant lasts.
-  attachment: string;
+  at: number;
 }
 
 export interface NativeChatConversation {
@@ -24,6 +20,7 @@ export interface NativeChatConversation {
   uid: string;
   preview: string;
   time: string;
+  at: number;
   unread: number;
   muted: boolean;
   messages: NativeChatMessage[];
@@ -42,6 +39,7 @@ interface DmPayloadConversation {
   out: boolean;
   at: number;
   muted: boolean;
+  unread: number;
 }
 
 interface DmPayload {
@@ -61,6 +59,11 @@ interface DmThreadPayload {
   state: string;
   id?: string;
   messages?: DmThreadMessage[];
+}
+
+interface SendStatePayload {
+  state: string;
+  messageId: string;
 }
 
 // The composer's emoji panel. A fixed single screen of glyphs keeps the panel
@@ -84,8 +87,8 @@ const PUSH_MS: number = 260;
 const POP_MS: number = 220;
 
 function message(id: string, text: string, outgoing: boolean, time: string,
-  kind: 'text' | 'post' = 'text', attachment: string = ''): NativeChatMessage {
-  return { id, text, outgoing, kind, time, attachment };
+  at: number, kind: 'text' | 'post' = 'text'): NativeChatMessage {
+  return { id, text, outgoing, kind, time, at };
 }
 
 // The native Messages surface renders whatever the account actually has. The DM
@@ -119,14 +122,15 @@ export function parseDmPayload(json: string): NativeChatConversation[] {
       uid: item.uid ?? '',
       preview: item.out ? 'You: ' + item.text : item.text,
       time: relativeTime(item.at),
-      unread: 0,
+      at: item.at,
+      unread: item.unread ?? 0,
       muted: item.muted === true,
       // The inbox carries the newest message per conversation, so the thread
       // opens on the real one rather than on an empty page. Full history
       // arrives separately through the thread payload (see onThreadChanged).
       messages: item.text === ''
         ? []
-        : [message('dm-' + item.id + '-0', item.text, item.out, relativeTime(item.at))]
+        : [message('dm-' + item.id + '-0', item.text, item.out, relativeTime(item.at), item.at)]
     });
   }
   return out;
@@ -202,6 +206,7 @@ export struct NativeMessages {
   @Prop @Watch('onDmChanged') dmJson: string = '';
   // Full history for the open conversation, verbatim from dmThreadScript.
   @Prop @Watch('onThreadChanged') threadJson: string = '';
+  @Prop @Watch('onSendStateChanged') sendStateJson: string = '';
   @State conversations: NativeChatConversation[] = [];
   // What the bridge said about the account, so the surface can be honest about
   // why there is nothing to show.
@@ -217,15 +222,17 @@ export struct NativeMessages {
   // what the header back arrow and the system back gesture both do.
   @State inConversation: boolean = false;
   @State emojiOpen: boolean = false;
-  @State attachmentName: string = '';
   @State filterIndex: number = FILTER_ALL;
   private threadScroller: Scroller = new Scroller();
+  private readCutoffs: Map<string, number> = new Map<string, number>();
   onConversationChange: (open: boolean, title: string) => void = () => {
   };
   // The shell owns the WebView, so history and sending go through it.
   onRequestThread: (id: string) => void = () => {
   };
-  onSendMessage: (id: string, uid: string, text: string) => void = () => {
+  onSendMessage: (id: string, uid: string, text: string, messageId: string) => void = () => {
+  };
+  onMuteConversation: (id: string, muted: boolean) => void = () => {
   };
   onSignIn: () => void = () => {
   };
@@ -266,12 +273,13 @@ export struct NativeMessages {
         }
         list[i].messages = list[i].messages.concat(fresh);
       }
-      if (prev.muted !== list[i].muted) {
-        // A local mute toggle wins until the next full reload explains itself.
-        list[i].muted = prev.muted;
-      }
       if (list[i].uid === '' && prev.uid !== '') {
         list[i].uid = prev.uid;
+      }
+      const readAt: number = this.readCutoffs.get(list[i].id) ?? 0;
+      if (readAt > 0 && list[i].messages.length > 0 &&
+        list[i].messages[list[i].messages.length - 1].at <= readAt) {
+        list[i].unread = 0;
       }
     }
     this.dmState = dmStateOf(this.dmJson);
@@ -305,7 +313,7 @@ export struct NativeMessages {
       if (!m || !m.text) {
         continue;
       }
-      server.push(message('srv-' + m.id, m.text, m.out, relativeTime(m.at)));
+      server.push(message('srv-' + m.id, m.text, m.out, relativeTime(m.at), m.at));
     }
     const mine: NativeChatMessage[] = conversation.messages.filter(
       (m: NativeChatMessage) => m.id.indexOf('sent-') === 0);
@@ -331,6 +339,51 @@ export struct NativeMessages {
     this.scrollThreadToEnd();
   }
 
+  private removePendingMessage(messageId: string, restoreComposer: boolean): void {
+    let restored: string = '';
+    for (let ci: number = 0; ci < this.conversations.length; ci++) {
+      const conversation: NativeChatConversation = this.conversations[ci];
+      const remaining: NativeChatMessage[] = [];
+      for (let mi: number = 0; mi < conversation.messages.length; mi++) {
+        if (conversation.messages[mi].id === messageId) {
+          restored = conversation.messages[mi].text;
+        } else {
+          remaining.push(conversation.messages[mi]);
+        }
+      }
+      if (remaining.length !== conversation.messages.length) {
+        conversation.messages = remaining;
+      }
+    }
+    if (restoreComposer && restored !== '' && this.composerText === '') {
+      this.composerText = restored;
+    }
+    const active: NativeChatMessage[] = [];
+    for (let i: number = 0; i < this.activeMessages.length; i++) {
+      if (this.activeMessages[i].id !== messageId) {
+        active.push(this.activeMessages[i]);
+      }
+    }
+    this.activeMessages = active;
+    this.conversations = this.conversations.slice();
+  }
+
+  private onSendStateChanged(): void {
+    if (this.sendStateJson === '') {
+      return;
+    }
+    try {
+      const payload = JSON.parse(this.sendStateJson) as SendStatePayload;
+      if (payload.state === 'error') {
+        this.removePendingMessage(payload.messageId, true);
+        this.sending = false;
+      } else if (payload.state === 'ok') {
+        this.sending = false;
+      }
+    } catch (err) {
+    }
+  }
+
   // The shell closes a thread from its back arrow and from the system back
   // gesture; both only flip `open`, so the pop transition is driven from here.
   onOpenChanged(): void {
@@ -341,7 +394,6 @@ export struct NativeMessages {
 
   private popConversation(): void {
     this.emojiOpen = false;
-    this.attachmentName = '';
     this.threadState = '';
     this.getUIContext().animateTo({ duration: POP_MS, curve: Curve.FastOutSlowIn }, () => {
       this.inConversation = false;
@@ -386,11 +438,11 @@ export struct NativeMessages {
       return;
     }
     this.selectedId = id;
+    this.readCutoffs.set(id, conversation.at);
     this.activeMessages = conversation.messages.slice();
     this.threadState = 'loading';
     this.composerText = '';
     this.emojiOpen = false;
-    this.attachmentName = '';
     if (conversation.unread > 0) {
       conversation.unread = 0;
       this.conversations = this.conversations.slice();
@@ -415,45 +467,22 @@ export struct NativeMessages {
 
   private sendMessage(): void {
     const text: string = this.composerText.trim();
-    const attachment: string = this.attachmentName;
     const conversation: NativeChatConversation | undefined = this.currentConversation();
-    if ((text === '' && attachment === '') || conversation === undefined || this.sending) {
-      return;
-    }
-    // Text goes through the page session for real; an attachment chip alone
-    // stays local because the DM API has no file path for a picker URI.
-    if (text !== '' && conversation.uid !== '') {
-      this.sending = true;
-      const pending: NativeChatMessage = message('sent-' + Date.now().toString(), text, true,
-        this.clockNow(), 'text', attachment);
-      conversation.messages = conversation.messages.concat([pending]);
-      this.activeMessages = this.activeMessages.concat([pending]);
-      conversation.preview = 'You: ' + (text === '' ? attachment : text);
-      conversation.time = 'now';
-      this.conversations = this.conversations.slice();
-      const cid: string = conversation.id;
-      const uid: string = conversation.uid;
-      this.composerText = '';
-      this.attachmentName = '';
-      this.emojiOpen = false;
-      this.sending = false;
-      this.scrollThreadToEnd();
-      this.onSendMessage(cid, uid, text);
+    if (text === '' || conversation === undefined || this.sending) {
       return;
     }
     this.sending = true;
-    const sent: NativeChatMessage = message('sent-' + Date.now().toString(), text, true,
-      this.clockNow(), 'text', attachment);
-    conversation.messages = conversation.messages.concat([sent]);
-    this.activeMessages = this.activeMessages.concat([sent]);
-    conversation.preview = 'You: ' + (text === '' ? attachment : text);
+    const messageId: string = 'sent-' + Date.now().toString();
+    const pending: NativeChatMessage = message(messageId, text, true, this.clockNow(), Date.now());
+    conversation.messages = conversation.messages.concat([pending]);
+    this.activeMessages = this.activeMessages.concat([pending]);
+    conversation.preview = 'You: ' + text;
     conversation.time = 'now';
     this.conversations = this.conversations.slice();
     this.composerText = '';
-    this.attachmentName = '';
     this.emojiOpen = false;
-    this.sending = false;
     this.scrollThreadToEnd();
+    this.onSendMessage(conversation.id, conversation.uid, text, messageId);
   }
 
   private clockNow(): string {
@@ -469,46 +498,12 @@ export struct NativeMessages {
     if (conversation === undefined) {
       return;
     }
-    conversation.muted = !conversation.muted;
-    this.conversations = this.conversations.slice();
-    this.toast(conversation.muted
-      ? $r('app.string.messages_muted')
-      : $r('app.string.messages_unmuted'));
-  }
-
-  private archiveConversation(id: string): void {
-    const wasOpen: boolean = this.selectedId === id;
-    this.conversations = this.conversations.filter((item: NativeChatConversation) => item.id !== id);
-    this.toast($r('app.string.messages_archived'));
-    if (wasOpen) {
-      this.popConversation();
-      this.onConversationChange(false, '');
-    }
+    this.onMuteConversation(id, !conversation.muted);
   }
 
   private toast(message: ResourceStr): void {
     try {
       this.getUIContext().getPromptAction().showToast({ message: message, duration: 1600 });
-    } catch (err) {
-    }
-  }
-
-  private openAttachmentPicker(): void {
-    try {
-      const options: photoAccessHelper.PhotoSelectOptions =
-        new photoAccessHelper.PhotoSelectOptions();
-      options.MIMEType = photoAccessHelper.PhotoViewMIMETypes.IMAGE_VIDEO_TYPE;
-      options.maxSelectNumber = 1;
-      new photoAccessHelper.PhotoViewPicker().select(options)
-        .then((result: photoAccessHelper.PhotoSelectResult) => {
-          if (result.photoUris.length > 0) {
-            const uri: string = result.photoUris[0];
-            const slash: number = uri.lastIndexOf('/');
-            this.attachmentName = slash >= 0 ? uri.substring(slash + 1) : uri;
-          }
-        })
-        .catch(() => {
-        });
     } catch (err) {
     }
   }
@@ -587,10 +582,6 @@ export struct NativeMessages {
         () => {
           this.toggleMute(item.id);
         })
-      this.swipeAction($r('sys.symbol.archivebox_fill'), $r('app.string.messages_archive'),
-        () => {
-          this.archiveConversation(item.id);
-        })
     }
     .height('100%')
     .padding({ left: S16, right: S20 })
@@ -657,94 +648,26 @@ export struct NativeMessages {
   }
 
   @Builder
-  postCard(text: string) {
-    Column({ space: S8 }) {
-      Row({ space: S8 }) {
-        Text('X')
-          .fontSize(15)
-          .fontFamily(FONT_FAMILY)
-          .fontWeight(FontWeight.Bold)
-          .fontColor($r('sys.color.ohos_id_color_text_primary'))
-        Text(text)
-          .fontSize(15)
-          .fontFamily(FONT_FAMILY)
-          .fontWeight(FontWeight.Medium)
-          .fontColor($r('sys.color.ohos_id_color_text_primary'))
-          .layoutWeight(1)
-      }
-      .width('100%')
-      Text('X widgets on iOS are here')
-        .fontSize(14)
-        .fontFamily(FONT_FAMILY)
-        .fontColor($r('sys.color.ohos_id_color_text_primary'))
-      Text('access top news, shortcuts, and notifications from your home screen')
-        .fontSize(13)
-        .fontFamily(FONT_FAMILY)
-        .fontColor($r('sys.color.ohos_id_color_text_secondary'))
-      Row({ space: S8 }) {
-        Text('X')
-          .fontSize(12)
-          .fontFamily(FONT_FAMILY)
-          .fontWeight(FontWeight.Bold)
-          .fontColor($r('sys.color.ohos_id_color_text_primary'))
-        Text('@X  13/12/2025')
-          .fontSize(12)
-          .fontFamily(FONT_FAMILY)
-          .fontColor($r('sys.color.ohos_id_color_text_secondary'))
-      }
-      .width('100%')
-    }
-    .width('100%')
-    .padding(S12)
-    .borderRadius(RADIUS_SM)
-    .border({ width: 1, color: $r('sys.color.ohos_id_color_list_separator') })
-    .backgroundColor($r('sys.color.ohos_id_color_sub_background'))
-    // Quoted-post lines read as a document, so they are left aligned rather
-    // than centred inside the card.
-    .alignItems(HorizontalAlign.Start)
-  }
-
-  @Builder
-  attachmentChip(name: string) {
-    Row({ space: S4 }) {
-      SymbolGlyph($r('sys.symbol.paperclip'))
-        .fontSize(13)
-        .fontColor([$r('sys.color.ohos_id_color_text_secondary')])
-        .accessibilityLevel('no')
-      Text(name)
-        .fontSize(12)
-        .fontFamily(FONT_FAMILY)
-        .maxLines(1)
-        .textOverflow({ overflow: TextOverflow.Ellipsis })
-        .fontColor($r('sys.color.ohos_id_color_text_secondary'))
-    }
-    .padding({ left: S8, right: S8, top: S4, bottom: S4 })
-    .borderRadius(RADIUS_SM)
-    .backgroundColor($r('sys.color.ohos_id_color_sub_background'))
-    .constraintSize({ maxWidth: '78%' })
-  }
-
-  @Builder
   messageBubble(item: NativeChatMessage) {
     Column({ space: S2 }) {
-      if (item.kind === 'post') {
-        this.postCard(item.text)
-      } else if (item.text !== '') {
-        Text(item.text)
-          .fontSize(16)
-          .fontFamily(FONT_FAMILY)
-          .fontColor(item.outgoing
-            ? $r('sys.color.ohos_id_color_foreground_contrary')
-            : $r('sys.color.ohos_id_color_text_primary'))
-          .backgroundColor(item.outgoing
-            ? $r('sys.color.ohos_id_color_emphasize')
-            : $r('sys.color.ohos_id_color_sub_background'))
-          .borderRadius(RADIUS_SM)
-          .padding({ left: S12, right: S12, top: S8, bottom: S8 })
-          .constraintSize({ maxWidth: '78%' })
-      }
-      if (item.attachment !== '') {
-        this.attachmentChip(item.attachment)
+      if (item.text !== '') {
+        // The Row owns the fill and radius while the Text stays transparent.
+        // This keeps one continuous surface for wrapped messages without the
+        // emulator's faulty Text background paint path.
+        Row() {
+          Text(item.text)
+            .fontSize(16)
+            .fontFamily(FONT_FAMILY)
+            .fontColor(item.outgoing
+              ? $r('sys.color.ohos_id_color_foreground_contrary')
+              : $r('sys.color.ohos_id_color_text_primary'))
+        }
+        .constraintSize({ maxWidth: '78%' })
+        .padding({ left: S12, right: S12, top: S8, bottom: S8 })
+        .borderRadius(RADIUS_SM)
+        .backgroundColor(item.outgoing
+          ? $r('sys.color.ohos_id_color_emphasize')
+          : $r('sys.color.ohos_id_color_sub_background'))
       }
       Text(item.time)
         .fontSize(11)
@@ -787,43 +710,7 @@ export struct NativeMessages {
       if (this.emojiOpen) {
         this.emojiPanel()
       }
-      if (this.attachmentName !== '') {
-        Row({ space: S8 }) {
-          this.attachmentChip(this.attachmentName)
-          Blank()
-          Button({ type: ButtonType.Circle }) {
-            SymbolGlyph($r('sys.symbol.xmark'))
-              .fontSize(16)
-              .fontColor([$r('sys.color.ohos_id_color_text_secondary')])
-          }
-          .width(32)
-          .height(32)
-          .backgroundColor(Color.Transparent)
-          .accessibilityText($r('app.string.messages_remove_attachment'))
-          .accessibilityLevel('yes')
-          .onClick(() => {
-            this.attachmentName = '';
-          })
-        }
-        .width('100%')
-        .padding({ left: S16, right: S12, top: S4, bottom: S4 })
-        .alignItems(VerticalAlign.Center)
-      }
       Row({ space: S4 }) {
-        Button({ type: ButtonType.Circle }) {
-          SymbolGlyph($r('sys.symbol.plus_circle_fill'))
-            .fontSize(22)
-            .fontColor([$r('sys.color.ohos_id_color_emphasize')])
-        }
-        .width(TOOL_BUTTON)
-        .height(TOOL_BUTTON)
-        .backgroundColor(Color.Transparent)
-        .accessibilityText($r('app.string.messages_add_attachment'))
-        .accessibilityLevel('yes')
-        .onClick(() => {
-          this.openAttachmentPicker();
-        })
-
         Button({ type: ButtonType.Circle }) {
           SymbolGlyph($r('sys.symbol.face_smiling'))
             .fontSize(22)
@@ -863,14 +750,12 @@ export struct NativeMessages {
               .height(TOOL_BUTTON)
               // HarmonyOS greys a control that cannot act instead of removing
               // it, so the send slot keeps its position and size in both states.
-              .fill(this.composerText.trim() === '' && this.attachmentName === ''
+              .fill(this.composerText.trim() === '' || this.sending
                 ? $r('sys.color.ohos_id_color_button_normal')
                 : $r('sys.color.ohos_id_color_emphasize'))
-            SymbolGlyph(this.composerText.trim() === '' && this.attachmentName === ''
-              ? $r('sys.symbol.mic_fill')
-              : $r('sys.symbol.paperplane_fill'))
+            SymbolGlyph($r('sys.symbol.paperplane_fill'))
               .fontSize(20)
-              .fontColor([this.composerText.trim() === '' && this.attachmentName === ''
+              .fontColor([this.composerText.trim() === '' || this.sending
                 ? $r('sys.color.ohos_id_color_text_secondary')
                 : $r('sys.color.ohos_id_color_foreground_contrary')])
           }
@@ -880,12 +765,10 @@ export struct NativeMessages {
         .width(TOOL_BUTTON)
         .height(TOOL_BUTTON)
         .backgroundColor(Color.Transparent)
-        .accessibilityText(this.composerText.trim() === '' && this.attachmentName === ''
-          ? $r('app.string.messages_voice')
-          : $r('app.string.messages_send'))
+        .accessibilityText($r('app.string.messages_send'))
         .accessibilityLevel('yes')
         .onClick(() => {
-          if (this.composerText.trim() !== '' || this.attachmentName !== '') {
+          if (this.composerText.trim() !== '' && !this.sending) {
             this.sendMessage();
           }
         })
@@ -1022,20 +905,6 @@ export struct NativeMessages {
         .accessibilityText($r('app.string.messages_filter_title'))
         .accessibilityLevel('yes')
         .bindMenu(this.filterMenu)
-        Button({ type: ButtonType.Circle }) {
-          SymbolGlyph($r('sys.symbol.person_badge_plus'))
-            .fontSize(22)
-            .fontColor([$r('sys.color.ohos_id_color_text_primary')])
-        }
-        .width(TOOL_BUTTON)
-        .height(TOOL_BUTTON)
-        .backgroundColor(Color.Transparent)
-        .accessibilityText($r('app.string.messages_new_message'))
-        .accessibilityLevel('yes')
-        .onClick(() => {
-          this.searchText = '';
-          this.filterIndex = FILTER_ALL;
-        })
       }
       .width('100%')
       .padding({ left: S20, right: S8, top: S8, bottom: S4 })

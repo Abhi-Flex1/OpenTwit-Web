@@ -56,6 +56,17 @@ check('search uses verified typeahead topics',
 check('DM inbox uses shared account derivation',
   chrome.includes('otAccountFromConvs(convs)'));
 check('inbox carries uid for sending', chrome.includes('uid'));
+check('inbox carries read marker for unread rows', chrome.includes('last_read_event_id'));
+check('group send targets conversation when uid is absent', chrome.includes('conversation_id:cid'));
+check('mute uses verified session routes', chrome.includes('mutes/conversations/create'));
+const messages = read('entry/src/main/ets/components/NativeMessages.ets');
+check('chat bubbles use the bounded Row renderer',
+  messages.includes('Row() {') &&
+  messages.includes('.backgroundColor(item.outgoing') &&
+  messages.includes('.borderRadius(RADIUS_SM)'));
+check('chat bubbles keep contrasting system text colors',
+  messages.includes('ohos_id_color_foreground_contrary') &&
+  messages.includes('ohos_id_color_text_primary'));
 
 // 3. Components exist and own their states ------------------------------------
 const components = [

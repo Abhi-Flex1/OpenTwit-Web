@@ -421,17 +421,23 @@ proof).
 ### 8.4 Messages: native ArkUI surface
 
 The visible Messages experience no longer delegates to XChat. `NativeMessages`
-owns the padded conversation list, search/filter row, conversation detail,
-native call/video/more header actions and the composer. The shared WebView
-continues loading the web route underneath so login cookies and unread counts
-remain available to the shell, but it is covered by the native surface on this
-tab. The floating compose FAB is suppressed on Messages so it cannot overlap
-the send control. The native model is seeded from the signed-in inbox capture
-and keeps outgoing messages in ArkUI state for the session.
+owns the padded conversation list, search/filter row, conversation detail, text
+composer and emoji panel. The shared WebView continues loading the web route
+underneath so login cookies and unread counts remain available to the shell, but
+it is covered by the native surface on this tab. The floating compose FAB is
+suppressed on Messages so it cannot overlap the send control. The native model
+is fed by the signed-in inbox payload; no conversations or messages are seeded.
+Message text is drawn inside a bounded rounded `Row` surface rather than a
+filled `Text` or span, which keeps wrapped messages continuous and avoids the
+emulator's black-background paint path. Text sends use the real DM endpoint,
+while mute uses the session-backed route confirmed in the current x.com client.
+Archive, attachments, voice, calls, and video calls are not exposed by the
+native surface until their real paths exist.
 
 ### 8.5 Verification on devices
 
-Phone AVD (1320x2856, signed in as the account owner):
+Phone AVD (1320x2856, signed in as the account owner; the current CLI target is
+`127.0.0.1:5555`):
 `screenshots/final/mobile/` — home (For you), account menu, home (Following),
 explore, explore results, notifications, notification settings, messages,
 profile, settings, post detail, compose sheet. All twelve are embedded in the
@@ -867,16 +873,18 @@ This section records the pass run against that feedback on the phone AVD
   edges" complaint. The list now ends with breathing room instead of meeting the
   bar with no space.
 * **Swipe actions on a conversation row** (`ListItem.swipeAction`, spring edge
-  effect): mute/unmute and archive, each a disc plus its label, matching how
-  HarmonyOS exposes per-row actions.
+  effect): mute/unmute is backed by the current x.com session route. Archive is
+  intentionally absent because the current client does not expose a verified
+  archive mutation to this shell.
 * **The inbox filter is a real menu**, not a static pill: it now carries the
   chevron the platform puts on a menu trigger and offers All / Unread. Unread is
   the one filter the local session can honour honestly — verified and
   people-you-follow are account-graph facts the shell does not have until the
   real DM list is read off the page.
-* **The composer became a composer.** Visible field fill, an emoji panel, an
-  attachment chip that survives until send, and a send slot that greys out when
-  there is nothing to send instead of moving.
+* **The composer became a composer.** Visible field fill, an emoji panel, and a
+  text send slot that greys out when there is nothing to send instead of moving.
+  Unsupported attachment/voice affordances were removed instead of displaying a
+  local-only success state.
 * **Per-message timestamps** under each bubble, and the thread is
   **bottom-anchored** so a short conversation sits on the composer rather than
   floating at the top of an empty page.
@@ -900,34 +908,38 @@ afterwards and is treated as emulator GL flakiness (the boot log warns that
 
 ### 13.4 Verification on the phone AVD
 
-Every state below was driven with `uitest uiInput` on `127.0.0.1:5557` and read
-back from a real screenshot plus `uitest dumpLayout`; images are in
-`screenshots/native-*-v3.jpeg`.
+Every state below was driven with `uitest uiInput` on the phone AVD and read
+back from a real screenshot plus `uitest dumpLayout`. The existing gallery
+captures are in `screenshots/native-*-v3.jpeg`; the follow-up renderer pass was
+kept out of the repository because the captures contain live account content.
 
 | Check | How | Result |
 | --- | --- | --- |
 | Inbox layout and insets | `screenCap` + `dumpLayout` | 20 vp gutters, 76 vp rows, last row clears the bar |
 | Open a thread | tap row | Pushes; tab bar removed; composer at the window bottom |
-| Send | type + tap send | Outgoing bubble appears, composer clears, thread scrolls to the end |
+| Send | type + tap send | Bridge fixture and optimistic/error state covered; a live write to a third party was deliberately not fired |
 | Pop | header back arrow | Returns to the inbox, tab bar restored |
-| Swipe actions | `uiInput swipe` left | Mute + Archive discs revealed |
+| Swipe actions | `uiInput swipe` left | Session-backed Mute disc revealed |
 | Filter | tap chip | Frosted menu with All / Unread; background is visibly blurred |
 | Search | focus + `uiInput text` | `"wal"` → `Waleed` and `Finn Insiders` (name and preview match) |
 | Build | `hvigorw assembleHap` | `BUILD SUCCESSFUL`, 0 errors |
 | Linter | `codelinter -f json entry/src/main/ets` | `[]` — no findings (same as baseline) |
-| Repo checks | `git diff --check`, `check-unread-counts.mjs`, resource JSON parse | all pass |
+| Repo checks | `git diff --check`, media-save, native-surface, bridge, unread and resource JSON parse | all pass |
+
+A follow-up phone-AVD pass on 2026-09-24 opened the real Brady thread and
+verified a long outgoing message, a long incoming message, and a short incoming
+message. The bubbles were continuous rounded blue/gray surfaces with no black
+pixels; the layout dump kept readable text and stable bounds.
 
 ### 13.5 Boundaries
 
-* **The conversation model is still session-local.** The list, thread and
-  composer are ArkUI, but the conversations are the seeded in-memory model in
-  `NativeMessages.ets`; a sent message lives only for the session and nothing
-  round-trips to X. Replacing `seedNativeConversations()` with a store fed from
-  the page's own DM list is the remaining integration, and the model already
-  carries `unread` / `muted` / `attachment` fields for it.
-* **Unread counts on rows are therefore all zero**, because the only unread
-  number the shell actually has is the page's, and that already drives the tab
-  badge. The row-level dot is implemented and renders when the value is non-zero.
+* **The native conversation model is session-backed, not seeded.** The inbox,
+  thread, search, unread rows, text send and mute are fed by the page's own DM
+  API. Attachment sending, voice, calls, video calls and archive remain outside
+  this native surface rather than being represented by placeholder state.
+* **Unread rows are derived from the inbox's `last_read_event_id` and
+  `max_entry_id` markers.** A conversation becomes read when it is opened; a
+  later message with a newer timestamp returns to the unread state.
 * **The emulator's GL is degraded on this image** and produced one launch with a
   spurious polygon over the avatars. It did not reproduce; a real device is the
   authority for rendering.
@@ -1017,23 +1029,21 @@ could have been guessed:
 
 ### 14.5 Open, and honest about it
 
-* **The native Messages list was not seen rendering the real inbox.** The
-  surface renders correctly on the phone AVD (which is signed out, so it shows
-  the signed-out panel), and the bridge returns real data on the foldable AVD
-  (which is signed in) — but on that AVD the native surface did not come up when
-  the Messages tab was tapped, so the two halves were never seen together. The
-  rail taps do work there (tapping Profile and Home both changed the page), and
-  `hilog` stopped emitting the app's own lines partway through, so the cause was
-  not pinned down. This is the first thing to chase next.
+* **The native Messages inbox and thread have now been seen together on the
+  phone AVD.** Real rows, unread emphasis, long incoming/outgoing bubbles and
+  the short-message path were captured from the running app. The older
+  foldable-session caveat remains below because installing a new identity there
+  would destroy its separate cookie jar.
 * **The wide layout duplicates Messages.** On a wide window x.com renders its own
   Chat column on the home timeline, and its own Post button, neither of which the
   injected stylesheet hides. Both duplicate a native surface we already provide.
   Hiding them needs selectors taken from the signed-in wide DOM, which is the
   same session the point above needs.
-* **Sending a DM is still local.** The thread shows the real newest message and
-  the composer appends to the session, but nothing is posted back to x.com yet.
-  The send path is the same problem as the point above: it needs the signed-in
-  conversation DOM to drive the page's own composer.
+* **DM text send is implemented against the live endpoint but was not fired at a
+  real person during this pass.** The bridge test covers recipient and
+  conversation targeting, successful/error state handling, and the component
+  removes a failed optimistic bubble and restores the draft. A live send still
+  needs the owner's explicit choice of a safe self-conversation.
 * **Offline push is not what this is.** Notifications are published by the app
   from data it has just read. Delivery while the app is closed needs Huawei Push
   Kit with an AGC project and signed builds, which is not something this repo
@@ -1157,14 +1167,14 @@ in any run — every black/launcher frame traced to foreground flakiness.
 
 ### 16.3 Still honest boundaries
 
-* Per-row DM unread stays 0 (the inbox carries no per-conversation unread; the
-  page count still drives the tab badge and the row dot renders when non-zero).
-* Like/repost/DM-send POSTs use the live session headers but were **not**
+* Per-row DM unread is derived from the inbox read markers; the total tab badge
+  still comes from the page's own navigation count.
+* Like/repost/DM-send/mute POSTs use the live session headers but were **not**
   fired against the account (that would notify third parties) — implemented,
-  honest toasts on failure, awaiting owner-confirmed live test.
-* The signed-in native lists rendering real rows on glass is verified at the
-  data layer (above) but was not photographed: installing the new build on the
-  foldable would destroy its cookie jar (signing identity switch), and no
+  covered by bridge fixtures, and awaiting owner-confirmed safe live tests.
+* The signed-in native lists and Messages thread are verified on the phone AVD;
+  the same signed session is not carried to the foldable because installing the
+  new build there would destroy its cookie jar (signing identity switch), and no
   credentials were available to sign back in. The foldable session was left
   intact for the next signed-in pass.
 * Offline push still needs Push Kit with an AGC project and is not claimed.
