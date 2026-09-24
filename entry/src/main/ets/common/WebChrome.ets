@@ -348,7 +348,7 @@ export function dmMediaUploadScript(conversationId: string, text: string): strin
     'dm_users:false,media_id:mediaId,recipient_ids:"false",request_id:requestId,text:caption};' +
     'var sent=await req(sendPath,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body)});' +
     'if(!sent.ok)return JSON.stringify({state:"send-failed"});' +
-    'if(!sent.data)return JSON.stringify({state:"ok",messageId:""});' +
+    'if(!sent.data){delete window.__otDmFiles[cid];return JSON.stringify({state:"ok",messageId:""});}' +
     'var id="";var entries=sent.data.entries||[];if(entries.length&&entries[0].message)id=String(entries[0].message.id||"");' +
     'delete window.__otDmFiles[cid];return JSON.stringify({state:"ok",messageId:id});' +
     '}catch(e){var err={state:"error",message:String(e).slice(0,120)};return JSON.stringify(err);}');

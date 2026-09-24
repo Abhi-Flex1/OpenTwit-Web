@@ -840,7 +840,8 @@ struct MainTabs {
   // flashing an error over a surface that the new page is about to fill.
   private dropPendingBridgeReads(): void {
     const mediaConversation: string = this.dmMediaPickConversation !== '' ?
-      this.dmMediaPickConversation : this.pendingDmMediaConversation;
+      this.dmMediaPickConversation :
+      (this.dmMediaConversation !== '' ? this.dmMediaConversation : this.pendingDmMediaConversation);
     if (this.bridgePending.size > 0) {
       hilog.debug(DOMAIN, TAG, 'page load: dropping %{public}d pending read(s)',
         this.bridgePending.size);
@@ -871,6 +872,7 @@ struct MainTabs {
         nonce: Date.now().toString()
       });
       this.dmMediaPickConversation = '';
+      this.dmMediaConversation = '';
       this.pendingDmMediaSend = '';
       this.pendingDmMediaConversation = '';
       this.dmMediaPreviewUri = '';
@@ -1008,6 +1010,8 @@ struct MainTabs {
       });
       if (json.indexOf('"state":"ok"') >= 0) {
         this.dmMediaPreviewUri = '';
+        this.dmMediaConversation = '';
+        this.clearDmMediaForConversation(conversationId);
         this.refreshThread(conversationId);
         this.refreshDms();
       } else {
