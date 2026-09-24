@@ -15,6 +15,7 @@ export interface NativePost {
   replies: number;
   liked: boolean;
   reposted: boolean;
+  bookmarked: boolean;
   media: string;
   mediaWidth: number;
   mediaHeight: number;
@@ -62,6 +63,7 @@ export interface BridgePost {
   replies: number;
   liked: boolean;
   reposted: boolean;
+  bookmarked: boolean;
   media: string;
   mediaWidth: number;
   mediaHeight: number;
@@ -165,6 +167,7 @@ export function parsePosts(json: string): NativePost[] {
         replies: p.replies ?? 0,
         liked: p.liked === true,
         reposted: p.reposted === true,
+        bookmarked: p.bookmarked === true,
         media: p.media ?? '',
         mediaWidth: p.mediaWidth ?? 0,
         mediaHeight: p.mediaHeight ?? 0,

@@ -413,6 +413,14 @@
       "value": "إعجاب"
     },
     {
+      "name": "post_bookmark",
+      "value": "حفظ"
+    },
+    {
+      "name": "post_unbookmark",
+      "value": "إزالة الحفظ"
+    },
+    {
       "name": "post_action_failed",
       "value": "تعذّر ذلك. حاول مرة أخرى."
     },

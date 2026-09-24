@@ -413,6 +413,14 @@
       "value": "点赞"
     },
     {
+      "name": "post_bookmark",
+      "value": "收藏"
+    },
+    {
+      "name": "post_unbookmark",
+      "value": "取消收藏"
+    },
+    {
       "name": "post_action_failed",
       "value": "操作失败，请重试。"
     },

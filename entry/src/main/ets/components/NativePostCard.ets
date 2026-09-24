@@ -7,7 +7,7 @@ import { NativePost, formatCount } from '../common/NativeModels';
 export struct NativePostCard {
   @Prop post: NativePost = {
     id: '', name: '', handle: '', avatar: '', text: '', at: 0, time: '',
-    likes: 0, reposts: 0, replies: 0, liked: false, reposted: false, media: '',
+    likes: 0, reposts: 0, replies: 0, liked: false, reposted: false, bookmarked: false, media: '',
     mediaWidth: 0, mediaHeight: 0, mediaType: ''
   };
   @State savingMedia: boolean = false;
@@ -192,6 +192,11 @@ export struct NativePostCard {
               $r('app.string.post_repost'), this.post.reposted ? 'unrepost' : 'repost')
             this.actionButton($r('sys.symbol.heart_fill'), this.post.likes, this.post.liked,
               $r('app.string.post_like'), this.post.liked ? 'unlike' : 'like')
+            this.actionButton(this.post.bookmarked
+              ? $r('sys.symbol.bookmark_fill') : $r('sys.symbol.bookmark'),
+              0, this.post.bookmarked,
+              this.post.bookmarked ? $r('app.string.post_unbookmark') : $r('app.string.post_bookmark'),
+              this.post.bookmarked ? 'unbookmark' : 'bookmark')
           }
           .width('100%')
           .alignItems(VerticalAlign.Center)

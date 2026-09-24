@@ -186,6 +186,7 @@ interface TimelineBridgePost {
   replies: number;
   liked: boolean;
   reposted: boolean;
+  bookmarked: boolean;
   media: string;
 }
 

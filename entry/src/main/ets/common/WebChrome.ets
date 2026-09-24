@@ -315,7 +315,7 @@ const TWEET_SHAPE_JS: string =
   'text:txt,at:otTime(t.created_at),' +
   'likes:Number(t.favorite_count||0),reposts:Number(t.retweet_count||0),' +
   'replies:Number(t.reply_count||0),' +
-  'liked:!!t.favorited,reposted:!!t.retweeted,media:media,' +
+  'liked:!!t.favorited,reposted:!!t.retweeted,bookmarked:!!t.bookmarked,media:media,' +
   'mediaWidth:mediaWidth,mediaHeight:mediaHeight,mediaType:mediaType};}';
 
 // Home timeline with cursor paging. Verified live against a signed-in session:
@@ -328,6 +328,12 @@ export function homeTimelineScript(cursor: string): string {
   const safe: string = JSON.stringify(cursor);
   return pageBridgeScript(
     TWEET_SHAPE_JS +
+    'var domBookmarked=function(id){try{' +
+    'var arts=document.querySelectorAll("article[data-testid=tweet]");' +
+    'for(var i=0;i<arts.length;i++){var links=arts[i].querySelectorAll("a[href]");' +
+    'for(var j=0;j<links.length;j++){if((links[j].getAttribute("href")||"").indexOf("/status/"+id)>=0)' +
+    'return !!arts[i].querySelector("[data-testid=removeBookmark]");}}}' +
+    'catch(e){}return false;};' +
     'var cur=' + safe + ';' +
     'var path="/i/api/2/timeline/home.json?count=30";' +
     'if(cur)path+="&cursor="+encodeURIComponent(cur);' +
@@ -342,7 +348,7 @@ export function homeTimelineScript(cursor: string): string {
     'var item=(e.content&&e.content.item)||null;' +
     'var tref=item&&item.content&&item.content.tweet||null;' +
     'var tid=tref?tref.id:"";var t=tid?tweets[String(tid)]:null;if(!t)continue;' +
-    'var p=otTweet(t,users);if(p)out.push(p);}}' +
+    'var p=otTweet(t,users);if(p){p.bookmarked=domBookmarked(p.id);out.push(p);}}}' +
     'if(!out.length)return JSON.stringify({state:"empty"});' +
     'return JSON.stringify({state:"ok",posts:out.slice(0,40),next:next});');
 }
@@ -439,14 +445,15 @@ export function profileScript(handle: string, more: string): string {
     'tx=((tt?tt.innerText:"")||"").slice(0,500);}catch(e){}' +
     'if(!tx)continue;' +
     'var tm="";try{var tmEl=a.querySelector("time");if(tmEl)tm=tmEl.getAttribute("datetime")||"";}catch(e){}' +
-    'var rp=0,rt=0,lk=0,liked=false,reposted=false;' +
+    'var rp=0,rt=0,lk=0,liked=false,reposted=false,bookmarked=false;' +
     'try{var btns=a.querySelectorAll("button,[role=button]");' +
     'for(var bi=0;bi<btns.length;bi++){var lb=(btns[bi].getAttribute("aria-label")||"").toLowerCase();' +
     'if(lb.indexOf("repl")>=0)rp=num(lb);' +
     'else if(lb.indexOf("repost")>=0){rt=num(lb);if(lb.indexOf("undo")>=0)reposted=true;}' +
-    'else if(lb.indexOf("like")>=0){lk=num(lb);if(lb.indexOf("unlike")>=0)liked=true;}}}catch(e){}' +
+    'else if(lb.indexOf("like")>=0){lk=num(lb);if(lb.indexOf("unlike")>=0)liked=true;}' +
+    'if((btns[bi].getAttribute("data-testid")||"")==="removeBookmark"||lb.indexOf("bookmarked")>=0)bookmarked=true;}}catch(e){}' +
     'posts.push({id:ah,name:nm,handle:hm,avatar:avatar,text:tx,at:otTime(tm),' +
-    'likes:lk,reposts:rt,replies:rp,liked:liked,reposted:reposted,media:""});}}catch(e){}' +
+    'likes:lk,reposts:rt,replies:rp,liked:liked,reposted:reposted,bookmarked:bookmarked,media:""});}}catch(e){}' +
     'if(!nm&&!posts.length)return JSON.stringify({state:"empty"});' +
     'return JSON.stringify({state:"ok",user:{name:nm,handle:hm,avatar:avatar,banner:banner,' +
     'bio:bio,location:"",followers:fers,following:fing,posts:0,at:0},' +
@@ -488,14 +495,33 @@ export function searchTweetsScript(query: string, cursor: string): string {
     'return JSON.stringify({state:"ok",trends:out});');
 }
 
-// Like / unlike / repost / unrepost through the page session. The native post
-// row applies the change optimistically; this is the real write behind it.
+// Like / unlike / repost / unrepost through the page session. Bookmarking is
+// delegated to x.com's own rendered control: the current web client adds a
+// transaction/session filter to that mutation that is not part of the small
+// page-bridge helper. Clicking the real control keeps the native row aligned
+// with the same transport the live site uses and still lets us verify the
+// resulting state in the DOM before reporting success.
 export function postActionScript(kind: string, tweetId: string): string {
   const k: string = JSON.stringify(kind);
   const tid: string = JSON.stringify(tweetId);
   return pageBridgeScript(
     'var kind=' + k + ';var tid=' + tid + ';' +
     'if(!tid)return JSON.stringify({state:"empty"});' +
+    'if(kind==="bookmark"||kind==="unbookmark"){' +
+    'var arts=document.querySelectorAll("article[data-testid=tweet]");var target=null;' +
+    'for(var i=0;i<arts.length;i++){var links=arts[i].querySelectorAll("a[href]");' +
+    'for(var j=0;j<links.length;j++){if((links[j].getAttribute("href")||"").indexOf("/status/"+tid)>=0){target=arts[i];break;}}' +
+    'if(target)break;}' +
+    'if(!target)return JSON.stringify({state:"empty"});' +
+    'var wanted=kind==="bookmark"?"bookmark":"removeBookmark";' +
+    'var button=target.querySelector("[data-testid="+wanted+"]");' +
+    'var expected=kind==="bookmark"?"removeBookmark":"bookmark";' +
+    'if(!button)return JSON.stringify({state:"unexpected"});button.click();' +
+    'for(var wait=0;wait<25;wait++){' +
+    'var next=target.querySelector("[data-testid=bookmark],[data-testid=removeBookmark]");' +
+    'if(next&&next.getAttribute("data-testid")===expected)return JSON.stringify({state:"ok"});' +
+    'await new Promise(function(resolve){setTimeout(resolve,100);});}' +
+    'return JSON.stringify({state:"unexpected"});}' +
     'var path="";' +
     'if(kind==="like")path="/i/api/1.1/favorites/create.json?id="+encodeURIComponent(tid);' +
     'else if(kind==="unlike")path="/i/api/1.1/favorites/destroy.json?id="+encodeURIComponent(tid);' +

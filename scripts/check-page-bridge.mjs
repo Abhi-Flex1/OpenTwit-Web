@@ -267,6 +267,64 @@ r = await run(dmMute, { cookie: 'ct0=TOK', scripts: [BEARER_SCRIPT], routes: {
 }});
 check('dm mute uses conversation route', r.out.state === 'ok', JSON.stringify(r.out));
 
+// Bookmark writes use x.com's rendered control: the live web client attaches
+// its transaction/session filter to that request, so the bridge verifies the
+// result from the DOM instead of reimplementing a private GraphQL client.
+function bookmarkArticle() {
+  let bookmarked = false;
+  const button = {
+    click() {
+      bookmarked = !bookmarked;
+    },
+    getAttribute(name) {
+      return name === 'data-testid' ? (bookmarked ? 'removeBookmark' : 'bookmark') : null;
+    }
+  };
+  return {
+    get bookmarked() { return bookmarked; },
+    set bookmarked(value) { bookmarked = value; },
+    article: {
+      querySelectorAll(sel) {
+        if (sel === 'a[href]') {
+          return [{ getAttribute: () => '/sam/status/t1' }];
+        }
+        return [];
+      },
+      querySelector(sel) {
+        if (sel === '[data-testid=bookmark]' && !bookmarked) return button;
+        if (sel === '[data-testid=removeBookmark]' && bookmarked) return button;
+        if (sel === '[data-testid=bookmark],[data-testid=removeBookmark]') return button;
+        return null;
+      }
+    }
+  };
+}
+const bookmarkFixture = bookmarkArticle();
+const bookmarkAction = build('postActionScript', {
+  k: JSON.stringify('bookmark'),
+  tid: JSON.stringify('t1')
+});
+r = await run(bookmarkAction, {
+  cookie: 'ct0=TOK',
+  scripts: [BEARER_SCRIPT],
+  qa: (sel) => sel === 'article[data-testid=tweet]' ? [bookmarkFixture.article] : []
+});
+check('bookmark delegates to x.com and confirms state',
+  r.out.state === 'ok' && bookmarkFixture.bookmarked === true, JSON.stringify(r.out));
+const unbookmarkFixture = bookmarkArticle();
+unbookmarkFixture.bookmarked = true;
+const unbookmarkAction = build('postActionScript', {
+  k: JSON.stringify('unbookmark'),
+  tid: JSON.stringify('t1')
+});
+r = await run(unbookmarkAction, {
+  cookie: 'ct0=TOK',
+  scripts: [BEARER_SCRIPT],
+  qa: (sel) => sel === 'article[data-testid=tweet]' ? [unbookmarkFixture.article] : []
+});
+check('unbookmark delegates to x.com and confirms state',
+  r.out.state === 'ok' && unbookmarkFixture.bookmarked === false, JSON.stringify(r.out));
+
 r = await run(scripts.dmInbox, { cookie: 'ct0=TOK', scripts: [BEARER_SCRIPT], routes: { [inboxPath]: 401 } });
 check('dm http-401 → signed-out', r.out.state === 'signed-out', r.out.state);
 
@@ -378,7 +436,7 @@ const profileDoc = {
     if (sel === 'article[data-testid=tweet]') {
       return [fakeEl({
         links: [{ h: '/Abhi_Flex/status/123' }], tweetText: 'hello post', datetime: '2026-07-21T12:05:43.000Z',
-        btns: ['9 Replies. Reply', '1 repost. Repost', '37 Likes. Like']
+        btns: ['9 Replies. Reply', '1 repost. Repost', '37 Likes. Like', 'Bookmarked']
       })];
     }
     return [];
@@ -398,6 +456,8 @@ check('profile header counts', r.out.user?.handle === 'Abhi_Flex' && r.out.user?
 check('profile avatar picks largest', (r.out.user?.avatar ?? '').includes('400x400'), r.out.user?.avatar);
 check('profile posts', r.out.posts?.length === 1 && r.out.posts[0]?.id === '123' && r.out.posts[0]?.likes === 37,
   JSON.stringify(r.out.posts).slice(0, 120));
+check('profile carries bookmark state', r.out.posts?.[0]?.bookmarked === true,
+  JSON.stringify(r.out.posts?.[0]));
 r = await run(profileScriptSrc, { cookie: '', scripts: [] });
 check('profile no cookie → signed-out', r.out.state === 'signed-out', r.out.state);
 r = await run(profileScriptSrc, {

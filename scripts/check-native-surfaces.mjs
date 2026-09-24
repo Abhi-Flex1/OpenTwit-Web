@@ -130,7 +130,7 @@ const required = [
   'notif_empty_title', 'notif_liked', 'notif_followed',
   'profile_edit', 'profile_followers', 'profile_no_posts',
   'explore_trends_title', 'explore_no_results_title',
-  'post_like', 'post_repost', 'post_action_failed',
+  'post_like', 'post_repost', 'post_bookmark', 'post_unbookmark', 'post_action_failed',
   'messages_loading_thread', 'messages_send_unavailable',
   'signin_title', 'signin_message', 'signin_benefit_home', 'signin_button', 'signin_note'
 ];

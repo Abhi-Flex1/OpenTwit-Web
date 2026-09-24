@@ -413,6 +413,14 @@
       "value": "Like"
     },
     {
+      "name": "post_bookmark",
+      "value": "Bookmark"
+    },
+    {
+      "name": "post_unbookmark",
+      "value": "Remove bookmark"
+    },
+    {
       "name": "post_action_failed",
       "value": "That didn't work. Try again."
     },
