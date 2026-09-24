@@ -23,19 +23,28 @@ check('downloads image bytes over NetworkKit', saver.includes("from '@kit.Networ
   saver.includes('http.HttpDataType.ARRAY_BUFFER'));
 check('validates response and size', saver.includes('responseCode < 200') &&
   saver.includes('bytes.byteLength > MAX_IMAGE_BYTES'));
-check('writes through a sandbox file URI', saver.includes('fileUri.getUriFromPath(sourcePath)'));
-check('uses native save authorization', saver.includes('showAssetsCreationDialog'));
-check('does not reopen the system destination handle', !saver.includes('fileIo.copyFile') &&
-  !saver.includes('fileIo.open(destinations[0]'));
+check('uses the secure SaveButton authorization path', main.includes('SaveButton') &&
+  main.includes('SaveButtonOnClickResult.SUCCESS'));
+check('creates the authorized media asset from the sandbox URI',
+  saver.includes('createImageAssetRequest(context, sourceUri)') &&
+  saver.includes('helper.applyChanges(assetRequest)'));
+check('falls back to the API 24 creation dialog when applyChanges fails',
+  saver.includes('showAssetsCreationDialogEx') &&
+  saver.includes('destinations[0]'));
+check('copies the prepared bytes into the fallback destination',
+  saver.includes('copyPreparedFile(sourcePath, destinations[0])') &&
+  saver.includes('fileIo.copyFile(sourceFile.fd, destinationFile.fd)'));
 check('closes files and destroys request', saver.includes('request.destroy()') &&
   saver.includes('fileIo.close(file)'));
 check('always removes temporary media', saver.includes('fileIo.unlink(sourcePath)'));
 check('media keeps its native aspect ratio', models.includes('mediaWidth') &&
   models.includes('mediaHeight') && chrome.includes('mediaWidth=Number(one.width||0)'));
-check('post image exposes a save control', card.includes('sys.symbol.download') &&
-  card.includes('post_save_image') && card.includes('savingMedia'));
-check('save control is outside the post navigation target', card.includes('onOpen: () =>') &&
-  card.indexOf('this.onOpen();') < card.indexOf("sys.symbol.download"));
+check('post image exposes a download target', card.includes('post-media-save-') &&
+  card.includes('savingMedia') && card.includes('sys.symbol.download'));
+check('secure save control is outside post rows', main.includes('mediaSaveSheetView') &&
+  main.includes('bindSheet($$this.mediaSaveSheet'));
+check('prepared save data is cleaned when the sheet disappears',
+  main.includes('onDisAppear') && main.includes('cancelPreparedImage()'));
 check('Home and Profile both own the callback', home.includes('onSaveMedia') &&
   profile.includes('onSaveMedia') && main.includes('savePostImage'));
 check('shell reports success and failure', main.includes('post_media_saved') &&

@@ -1355,3 +1355,22 @@ Live reversible proof on the healthy API 24 target (2026-09-24):
 * `node scripts/check-page-bridge.mjs`, `check-native-surfaces.mjs`,
   `check-media-save.mjs`, `check-unread-counts.mjs`, `git diff --check`, and
   `hvigorw --no-daemon assembleHap` all passed.
+
+### 18.7 Media save: secure root surface and honest device boundary (2026-09-24)
+
+The post-card download target now only downloads a temporary sandbox image. A
+root-level native sheet owns the HarmonyOS `SaveButton` secure control, which
+is important because security components inside clipped virtualized `ListItem`
+subtrees register with `regStatus 0`. On the secure result, the app creates the
+media asset from the live sandbox URI, falls back to the API-24
+`showAssetsCreationDialogEx` contract when `applyChanges` is unavailable, and
+copies the prepared bytes into the returned destination URI. Cancellation,
+sheet dismissal, and component teardown all remove the temporary source.
+
+On the healthy API 24 phone AVD, the secure authorization dialog was reached
+and the app reached MediaLibrary, but that AVD's database is damaged: hilog
+reported `27394049/27394104`, `CreateAssetBucket fileId [-222]`, and
+`desFileUris:["-208"]`. The app reports `failed` and cleans up rather than
+claiming that an image was saved. A healthy-library asset proof remains
+pending until that emulator image is reset/repaired; this is recorded as a
+device limitation, not silently treated as product success.

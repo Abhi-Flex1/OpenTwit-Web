@@ -10,7 +10,7 @@ import { SymbolGlyphModifier } from '@kit.ArkUI';
 import { KeyCode } from '@kit.InputKit';
 import { vibrator } from '@kit.SensorServiceKit';
 import {
-  BAR_HEIGHT, FONT_FAMILY, HEADER_HEIGHT, PROGRESS_HEIGHT, RAIL_WIDTH, RADIUS, S12, S16, S4, S8,
+  BAR_HEIGHT, FONT_FAMILY, HEADER_HEIGHT, PROGRESS_HEIGHT, RAIL_WIDTH, RADIUS, S12, S16, S20, S4, S8,
   TOUCH_TARGET, WIDE_BREAKPOINT
 } from '../common/Theme';
 import {
@@ -29,7 +29,8 @@ import {
   searchTweetsScript, postActionScript, sessionIdentityScript, SESSION_WATCHER
 } from '../common/WebChrome';
 import {
-  saveRemoteImage, MEDIA_SAVE_CANCELLED, MEDIA_SAVE_FAILED, MEDIA_SAVE_OK
+  prepareRemoteImage, savePreparedImage, discardPreparedImage,
+  MEDIA_SAVE_CANCELLED, MEDIA_SAVE_FAILED, MEDIA_SAVE_OK
 } from '../common/MediaSaver';
 import { NativeMessages } from '../components/NativeMessages';
 import { NativeHome } from '../components/NativeHome';
@@ -273,6 +274,10 @@ struct MainTabs {
   @State draft: string = '';
   @State webComposer: boolean = false;
   @State posting: boolean = false;
+  @State mediaSavePath: string = '';
+  @State mediaSaveId: string = '';
+  @State mediaSaveSheet: boolean = false;
+  @State mediaSaveBusy: boolean = false;
   // True while the shell is reading the signed-in handle behind a native panel.
   @State discovering: boolean = false;
   // The page's own title (x.com's " / X" suffix stripped) and whether there is
@@ -426,6 +431,9 @@ struct MainTabs {
   }
 
   aboutToDisappear(): void {
+    if (this.mediaSavePath !== '') {
+      this.cancelPreparedImage();
+    }
     this.stopDmPolling();
     this.stopHomePolling();
     this.stopNotifListPolling();
@@ -1898,19 +1906,59 @@ struct MainTabs {
   }
 
   private async savePostImage(url: string, id: string): Promise<string> {
+    hilog.info(DOMAIN, TAG, 'media save start: %{public}s', id);
     const ctx: common.Context | undefined = this.getUIContext().getHostContext();
     if (ctx === undefined) {
+      hilog.warn(DOMAIN, TAG, 'media save unavailable: %{public}s', id);
       this.toast($r('app.string.post_media_save_failed'));
       return MEDIA_SAVE_FAILED;
     }
     this.toast($r('app.string.post_media_downloading'));
-    const result: string = await saveRemoteImage(ctx as common.UIAbilityContext, url, id);
+    const sourcePath: string = await prepareRemoteImage(
+      ctx as common.UIAbilityContext, url, id);
+    if (sourcePath === '') {
+      this.toast($r('app.string.post_media_save_failed'));
+      return MEDIA_SAVE_FAILED;
+    }
+    this.mediaSavePath = sourcePath;
+    this.mediaSaveId = id;
+    this.mediaSaveSheet = true;
+    return MEDIA_SAVE_CANCELLED;
+  }
+
+  private async commitPreparedImage(): Promise<void> {
+    if (this.mediaSaveBusy || this.mediaSavePath === '') {
+      return;
+    }
+    const ctx: common.Context | undefined = this.getUIContext().getHostContext();
+    if (ctx === undefined) {
+      await discardPreparedImage(this.mediaSavePath);
+      this.clearMediaSaveState();
+      this.toast($r('app.string.post_media_save_failed'));
+      return;
+    }
+    this.mediaSaveBusy = true;
+    const result: string = await savePreparedImage(
+      ctx as common.UIAbilityContext, this.mediaSavePath, this.mediaSaveId);
+    this.mediaSaveBusy = false;
+    this.clearMediaSaveState();
     if (result === MEDIA_SAVE_OK) {
       this.toast($r('app.string.post_media_saved'));
-    } else if (result !== MEDIA_SAVE_CANCELLED) {
+    } else {
       this.toast($r('app.string.post_media_save_failed'));
     }
-    return result;
+  }
+
+  private async cancelPreparedImage(): Promise<void> {
+    await discardPreparedImage(this.mediaSavePath);
+    this.clearMediaSaveState();
+  }
+
+  private clearMediaSaveState(): void {
+    this.mediaSaveSheet = false;
+    this.mediaSavePath = '';
+    this.mediaSaveId = '';
+    this.mediaSaveBusy = false;
   }
 
   private static nextCursor(json: string): string {
@@ -3459,6 +3507,54 @@ struct MainTabs {
     .onKeyEvent((event: KeyEvent) => this.composeKey(event))
   }
 
+  @Builder
+  mediaSaveSheetView() {
+    Column({ space: S12 }) {
+      Text($r('app.string.post_save_image'))
+        .fontSize(20)
+        .fontFamily(FONT_FAMILY)
+        .fontWeight(FontWeight.Medium)
+        .fontColor($r('sys.color.ohos_id_color_text_primary'))
+      Text($r('app.string.post_media_downloading'))
+        .fontSize(14)
+        .fontFamily(FONT_FAMILY)
+        .fontColor($r('sys.color.ohos_id_color_text_secondary'))
+      SaveButton({
+        icon: SaveIconStyle.FULL_FILLED,
+        text: SaveDescription.SAVE_IMAGE,
+        buttonType: ButtonType.Capsule
+      })
+        .width(180)
+        .height(52)
+        .fontSize(16)
+        .backgroundColor($r('sys.color.ohos_id_color_emphasize'))
+        .enabled(!this.mediaSaveBusy)
+        .onClick(async (event: ClickEvent, result: SaveButtonOnClickResult) => {
+          if (result === SaveButtonOnClickResult.SUCCESS) {
+            await this.commitPreparedImage();
+          } else if (result === SaveButtonOnClickResult.CANCELED_BY_USER) {
+            await this.cancelPreparedImage();
+          }
+        })
+      Button($r('app.string.compose_cancel'))
+        .width(180)
+        .height(44)
+        .backgroundColor(Color.Transparent)
+        .fontColor($r('sys.color.ohos_id_color_text_primary'))
+        .onClick(async () => {
+          await this.cancelPreparedImage();
+        })
+    }
+    .width('100%')
+    .padding({ left: S20, right: S20, top: S20, bottom: S20 })
+    .backgroundColor($r('sys.color.ohos_id_color_background'))
+    .onDisAppear(() => {
+      if (this.mediaSavePath !== '' && !this.mediaSaveBusy) {
+        this.cancelPreparedImage();
+      }
+    })
+  }
+
   build() {
     // alignContent Bottom pins the floating tab bar to the bottom edge while the
     // content column behind it keeps the full window.
@@ -3489,6 +3585,12 @@ struct MainTabs {
     .backgroundColor($r('sys.color.ohos_id_color_background'))
     .bindSheet($$this.sheetOpen, this.composeSheet(), {
       height: SheetSize.LARGE,
+      dragBar: true,
+      showClose: false,
+      blurStyle: BlurStyle.COMPONENT_ULTRA_THICK
+    })
+    .bindSheet($$this.mediaSaveSheet, this.mediaSaveSheetView(), {
+      height: SheetSize.MEDIUM,
       dragBar: true,
       showClose: false,
       blurStyle: BlurStyle.COMPONENT_ULTRA_THICK

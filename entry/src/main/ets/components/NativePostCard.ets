@@ -15,7 +15,8 @@ export struct NativePostCard {
   };
   onAction: (kind: string, id: string) => void = () => {
   };
-  onSaveMedia: (url: string) => Promise<string> = (_url: string): Promise<string> => {
+  onSaveMedia: (url: string, id: string) => Promise<string> =
+    (_url: string, _id: string): Promise<string> => {
     return Promise.resolve('cancelled');
   };
 
@@ -44,8 +45,10 @@ export struct NativePostCard {
     }
     this.savingMedia = true;
     try {
-      await this.onSaveMedia(this.post.media);
+      console.info('OpenTwitMedia save start ' + this.post.id);
+      await this.onSaveMedia(this.post.media, this.post.id);
     } catch (err) {
+      console.warn('OpenTwitMedia save exception ' + this.post.id);
     } finally {
       this.savingMedia = false;
     }
@@ -170,6 +173,7 @@ export struct NativePostCard {
               .width(40)
               .height(40)
               .backgroundColor('#66000000')
+              .id('post-media-save-' + this.post.id)
               .accessibilityText(this.savingMedia
                 ? $r('app.string.post_media_saving')
                 : $r('app.string.post_save_image'))

@@ -31,6 +31,12 @@ function extensionForUrl(url: string): string {
   return '';
 }
 
+function extensionFromPath(path: string): string {
+  const name: string = path.substring(path.lastIndexOf('/') + 1).toLowerCase();
+  const dot: number = name.lastIndexOf('.');
+  return dot < 0 ? 'jpg' : name.substring(dot + 1);
+}
+
 function safePostId(postId: string): string {
   let result: string = '';
   for (let i: number = 0; i < postId.length && result.length < 32; i++) {
@@ -53,24 +59,42 @@ async function closeFile(file: fileIo.File | undefined): Promise<void> {
   }
 }
 
+async function copyPreparedFile(sourcePath: string, destinationUri: string): Promise<boolean> {
+  let sourceFile: fileIo.File | undefined = undefined;
+  let destinationFile: fileIo.File | undefined = undefined;
+  try {
+    sourceFile = await fileIo.open(sourcePath, fileIo.OpenMode.READ_ONLY);
+    destinationFile = await fileIo.open(destinationUri, fileIo.OpenMode.WRITE_ONLY);
+    await fileIo.copyFile(sourceFile.fd, destinationFile.fd);
+    return true;
+  } catch (error) {
+    const err: BusinessError = error as BusinessError;
+    hilog.warn(DOMAIN, TAG, 'image destination copy failed: %{public}d %{public}s',
+      err.code, err.message);
+    return false;
+  } finally {
+    await closeFile(sourceFile);
+    await closeFile(destinationFile);
+  }
+}
+
 /**
- * Downloads one post image and asks HarmonyOS for a user-approved media-library
- * destination. The temporary app-sandbox file is always removed afterwards.
+ * Downloads one post image into the app sandbox. The caller keeps the returned
+ * path until a root-level SaveButton grants temporary media-library access.
  */
-export async function saveRemoteImage(context: common.UIAbilityContext, url: string,
+export async function prepareRemoteImage(context: common.UIAbilityContext, url: string,
   postId: string): Promise<string> {
   if (url.indexOf('https://') !== 0 || url.indexOf('pbs.twimg.com') < 0) {
-    return MEDIA_SAVE_FAILED;
+    return '';
   }
   const extension: string = extensionForUrl(url);
   if (extension === '') {
-    return MEDIA_SAVE_FAILED;
+    return '';
   }
 
   const request: http.HttpRequest = http.createHttp();
   let sourcePath: string = '';
   let sourceFile: fileIo.File | undefined = undefined;
-  let helper: photoAccessHelper.PhotoAccessHelper | undefined = undefined;
   try {
     const response: http.HttpResponse = await request.request(url, {
       method: http.RequestMethod.GET,
@@ -82,11 +106,11 @@ export async function saveRemoteImage(context: common.UIAbilityContext, url: str
     });
     if (response.responseCode < 200 || response.responseCode >= 300 ||
       response.resultType !== http.HttpDataType.ARRAY_BUFFER) {
-      return MEDIA_SAVE_FAILED;
+      return '';
     }
     const bytes: ArrayBuffer = response.result as ArrayBuffer;
     if (bytes.byteLength <= 0 || bytes.byteLength > MAX_IMAGE_BYTES) {
-      return MEDIA_SAVE_FAILED;
+      return '';
     }
 
     sourcePath = context.cacheDir + '/open-twit-' + safePostId(postId) + '-' +
@@ -97,45 +121,91 @@ export async function saveRemoteImage(context: common.UIAbilityContext, url: str
     await closeFile(sourceFile);
     sourceFile = undefined;
     if (written !== bytes.byteLength) {
-      return MEDIA_SAVE_FAILED;
+      try {
+        await fileIo.unlink(sourcePath);
+      } catch (err) {
+      }
+      return '';
     }
-
-    helper = photoAccessHelper.getPhotoAccessHelper(context);
-    const config: photoAccessHelper.PhotoCreationConfig = {
-      title: 'OpenTwit-' + safePostId(postId),
-      fileNameExtension: extension,
-      photoType: photoAccessHelper.PhotoType.IMAGE,
-      subtype: photoAccessHelper.PhotoSubtype.DEFAULT
-    };
-    const destinations: string[] =
-      await helper.showAssetsCreationDialog([fileUri.getUriFromPath(sourcePath)], [config]);
-    if (destinations.length === 0 || destinations[0] === '') {
-      return MEDIA_SAVE_CANCELLED;
-    }
-    // HarmonyOS 6.1's authorized save extension creates the media-library
-    // asset from the supplied sandbox URI before resolving this promise. The
-    // returned value is an internal destination handle, not a path that
-    // fileIo.open() can reopen; copying again reports a false failure after
-    // the system save has already succeeded.
-    return MEDIA_SAVE_OK;
+    return sourcePath;
   } catch (error) {
     const err: BusinessError = error as BusinessError;
     hilog.warn(DOMAIN, TAG, 'image save failed: %{public}d %{public}s', err.code, err.message);
-    return MEDIA_SAVE_FAILED;
-  } finally {
-    await closeFile(sourceFile);
-    request.destroy();
-    if (helper !== undefined) {
-      try {
-        await helper.release();
-      } catch (err) {
-      }
-    }
     if (sourcePath !== '') {
       try {
         await fileIo.unlink(sourcePath);
       } catch (err) {
       }
     }
+    return '';
+  } finally {
+    await closeFile(sourceFile);
+    request.destroy();
+  }
+}
+
+/**
+ * Commits a prepared sandbox image while the SaveButton's short-lived media
+ * grant is active. The source is removed only after the request completes.
+ */
+export async function savePreparedImage(context: common.UIAbilityContext,
+  sourcePath: string, postId: string): Promise<string> {
+  if (sourcePath === '') {
+    return MEDIA_SAVE_FAILED;
+  }
+  let helper: photoAccessHelper.PhotoAccessHelper | undefined = undefined;
+  try {
+    helper = photoAccessHelper.getPhotoAccessHelper(context);
+    const sourceUri: string = fileUri.getUriFromPath(sourcePath);
+    const assetRequest: photoAccessHelper.MediaAssetChangeRequest =
+      photoAccessHelper.MediaAssetChangeRequest.createImageAssetRequest(context, sourceUri);
+    try {
+      await helper.applyChanges(assetRequest);
+      if (assetRequest.getAsset() !== undefined && assetRequest.getAsset().uri !== '') {
+        return MEDIA_SAVE_OK;
+      }
+    } catch (error) {
+      const err: BusinessError = error as BusinessError;
+      hilog.warn(DOMAIN, TAG, 'secure asset request fallback: %{public}d', err.code);
+    }
+    // Some API 24 emulator images expose a damaged legacy MediaAsset database;
+    // the newer creation dialog still honors SaveButton's temporary grant.
+    const settings: photoAccessHelper.CreationSetting = {
+      title: 'OpenTwit-' + safePostId(postId),
+      fileNameExtension: extensionFromPath(sourcePath),
+      photoType: photoAccessHelper.PhotoType.IMAGE
+    };
+    const destinations: string[] = await helper.showAssetsCreationDialogEx(
+      [sourceUri], [settings]);
+    if (destinations.length === 0 || destinations[0] === '') {
+      return MEDIA_SAVE_CANCELLED;
+    }
+    return await copyPreparedFile(sourcePath, destinations[0]) ? MEDIA_SAVE_OK :
+      MEDIA_SAVE_FAILED;
+  } catch (error) {
+    const err: BusinessError = error as BusinessError;
+    hilog.warn(DOMAIN, TAG, 'image save commit failed: %{public}d %{public}s', err.code, err.message);
+    return MEDIA_SAVE_FAILED;
+  } finally {
+    if (helper !== undefined) {
+      try {
+        await helper.release();
+      } catch (err) {
+      }
+    }
+    try {
+      await fileIo.unlink(sourcePath);
+    } catch (err) {
+    }
+  }
+}
+
+export async function discardPreparedImage(sourcePath: string): Promise<void> {
+  if (sourcePath === '') {
+    return;
+  }
+  try {
+    await fileIo.unlink(sourcePath);
+  } catch (err) {
   }
 }
