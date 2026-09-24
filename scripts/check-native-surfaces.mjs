@@ -103,6 +103,9 @@ check('visible web details have a native return path',
   main.includes('private closeWebDetail()') &&
   main.includes('this.closeWebDetail();') &&
   main.includes('this.webDetailReturnIndex'));
+check('returning to Profile from a detail restores the profile route',
+  main.includes('if (index === 4) {') &&
+  main.includes('this.openOwnProfile();'));
 for (const token of ['homeJson', 'notifListJson', 'profileJson', 'trendsJson', 'searchJson', 'threadJson']) {
   check(`shell owns ${token}`, main.includes(token));
 }

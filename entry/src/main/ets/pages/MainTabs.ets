@@ -1338,6 +1338,10 @@ struct MainTabs {
       this.webDetailTitle = '';
       this.webDetailReturnIndex = 0;
       if (index === this.currentIndex) {
+        if (index === 4) {
+          this.openOwnProfile();
+          return;
+        }
         this.loadWeb(TWITTER_ROUTES[index]);
         this.refreshVisibleSurface();
         return;
