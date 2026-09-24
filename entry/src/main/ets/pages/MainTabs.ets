@@ -231,6 +231,14 @@ interface BridgePending {
   at: number;
 }
 
+interface PendingPostAction {
+  kind: string;
+  id: string;
+  returnUrl: string;
+  staged: boolean;
+  attempts: number;
+}
+
 @Entry
 @Component
 struct MainTabs {
@@ -340,6 +348,12 @@ struct MainTabs {
   // How many times each surface has been re-read after a transient failure.
   private bridgeRetries: Record<string, number> = {};
   private pendingSendConversations: Map<string, string> = new Map<string, string>();
+  // Bookmark writes are delegated to x.com's own rendered control. If the
+  // article is not on the hidden route, this briefly stages its status page
+  // there, clicks the real control, and restores the route behind the native
+  // surface.
+  private pendingPostAction: PendingPostAction | null = null;
+  private postActionStageTimer: number = -1;
   // Last count handed to the launcher, so the shell only calls out when it
   // actually changes.
   private badgeShown: number = -1;
@@ -734,6 +748,9 @@ struct MainTabs {
       });
       this.bridgePending.clear();
     }
+    if (this.pendingPostAction !== null && !this.pendingPostAction.staged) {
+      this.finishPostAction(false);
+    }
   }
 
   // Results land here by surface name, so one callback path serves every read.
@@ -858,11 +875,15 @@ struct MainTabs {
         this.toast($r('app.string.messages_mute_unavailable'));
       }
     } else if (name === 'postAction') {
-      if (json.indexOf('"state":"ok"') >= 0) {
-        this.tick();
-        this.refreshVisibleSurface();
+      if (this.pendingPostAction === null) {
+        return;
+      }
+      if (json.indexOf('"state":"staged"') >= 0) {
+        this.stagePostAction();
+      } else if (json.indexOf('"state":"ok"') >= 0) {
+        this.finishPostAction(true);
       } else {
-        this.toast($r('app.string.post_action_failed'));
+        this.finishPostAction(false);
       }
     }
   }
@@ -1807,7 +1828,73 @@ struct MainTabs {
       this.openCompose();
       return;
     }
+    if (this.pendingPostAction !== null) {
+      return;
+    }
+    const returnUrl: string = this.currentUrl !== '' ? this.currentUrl :
+      TWITTER_ROUTES[this.currentIndex];
+    this.pendingPostAction = {
+      kind: kind,
+      id: id,
+      returnUrl: returnUrl,
+      staged: false,
+      attempts: 0
+    };
     this.runBridge('postAction', postActionScript(kind, id), id);
+  }
+
+  private stagePostAction(): void {
+    const action: PendingPostAction | null = this.pendingPostAction;
+    if (action === null) {
+      return;
+    }
+    if (!action.staged) {
+      action.staged = true;
+      this.loadWeb(TWITTER_BASE + '/i/web/status/' + encodeURIComponent(action.id));
+      return;
+    }
+    if (action.attempts >= 5) {
+      this.finishPostAction(false);
+      return;
+    }
+    this.scheduleStagedPostAction();
+  }
+
+  private scheduleStagedPostAction(): void {
+    const action: PendingPostAction | null = this.pendingPostAction;
+    if (action === null || !action.staged) {
+      return;
+    }
+    if (this.postActionStageTimer !== -1) {
+      clearTimeout(this.postActionStageTimer);
+    }
+    this.postActionStageTimer = setTimeout(() => {
+      this.postActionStageTimer = -1;
+      const current: PendingPostAction | null = this.pendingPostAction;
+      if (current === null || !current.staged) {
+        return;
+      }
+      current.attempts++;
+      this.runBridge('postAction', postActionScript(current.kind, current.id, true), current.id);
+    }, 1200);
+  }
+
+  private finishPostAction(success: boolean): void {
+    const action: PendingPostAction | null = this.pendingPostAction;
+    this.pendingPostAction = null;
+    if (this.postActionStageTimer !== -1) {
+      clearTimeout(this.postActionStageTimer);
+      this.postActionStageTimer = -1;
+    }
+    if (action !== null && action.staged && action.returnUrl !== '') {
+      this.loadWeb(action.returnUrl);
+    }
+    if (success) {
+      this.tick();
+      this.refreshVisibleSurface();
+    } else {
+      this.toast($r('app.string.post_action_failed'));
+    }
   }
 
   private async savePostImage(url: string, id: string): Promise<string> {
@@ -2973,6 +3060,7 @@ struct MainTabs {
           this.applyPageChrome(event.url);
         }
         this.schedulePageStateRead();
+        this.scheduleStagedPostAction();
         if (this.ownHandle === '') {
           // A restored session can show up with no navigation at all; the
           // session read answers on any page.

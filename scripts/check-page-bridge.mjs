@@ -98,7 +98,7 @@ function decodeEntities(s) {
     .replace(/&quot;/g, '"').replace(/&apos;|&#0?39;/g, "'")
     .replace(/&amp;/g, '&');
 }
-async function run(script, { cookie = '', scripts = [], routes = {}, qs = null, qa = null } = {}) {
+async function run(script, { cookie = '', scripts = [], routes = {}, qs = null, qa = null, pathname = '' } = {}) {
   const listeners = [];
   const document = {
     cookie,
@@ -119,7 +119,7 @@ async function run(script, { cookie = '', scripts = [], routes = {}, qs = null, 
       };
     }
   };
-  const window = {};
+  const window = { location: { pathname } };
   const fetch = async (url, opts = {}) => {
     const u = String(url);
     if (scripts.includes(u)) {
@@ -267,9 +267,9 @@ r = await run(dmMute, { cookie: 'ct0=TOK', scripts: [BEARER_SCRIPT], routes: {
 }});
 check('dm mute uses conversation route', r.out.state === 'ok', JSON.stringify(r.out));
 
-// Bookmark writes use x.com's rendered control: the live web client attaches
-// its transaction/session filter to that request, so the bridge verifies the
-// result from the DOM instead of reimplementing a private GraphQL client.
+// Bookmark writes use x.com's rendered control. If the article is not on the
+// current hidden route, the script reports that the shell must stage the post
+// route before retrying the same authenticated control.
 function bookmarkArticle() {
   let bookmarked = false;
   const button = {
@@ -286,7 +286,7 @@ function bookmarkArticle() {
     article: {
       querySelectorAll(sel) {
         if (sel === 'a[href]') {
-          return [{ getAttribute: () => '/sam/status/t1' }];
+          return [{ getAttribute: () => '/sam/status/123' }];
         }
         return [];
       },
@@ -302,7 +302,8 @@ function bookmarkArticle() {
 const bookmarkFixture = bookmarkArticle();
 const bookmarkAction = build('postActionScript', {
   k: JSON.stringify('bookmark'),
-  tid: JSON.stringify('t1')
+  tid: JSON.stringify('123'),
+  stagedArg: 'false'
 });
 r = await run(bookmarkAction, {
   cookie: 'ct0=TOK',
@@ -315,7 +316,8 @@ const unbookmarkFixture = bookmarkArticle();
 unbookmarkFixture.bookmarked = true;
 const unbookmarkAction = build('postActionScript', {
   k: JSON.stringify('unbookmark'),
-  tid: JSON.stringify('t1')
+  tid: JSON.stringify('123'),
+  stagedArg: 'false'
 });
 r = await run(unbookmarkAction, {
   cookie: 'ct0=TOK',
@@ -324,6 +326,34 @@ r = await run(unbookmarkAction, {
 });
 check('unbookmark delegates to x.com and confirms state',
   r.out.state === 'ok' && unbookmarkFixture.bookmarked === false, JSON.stringify(r.out));
+
+r = await run(bookmarkAction, {
+  cookie: 'ct0=TOK',
+  scripts: [BEARER_SCRIPT],
+  qa: () => []
+});
+check('bookmark requests hidden-route staging when the article is absent',
+  r.out.state === 'staged', JSON.stringify(r.out));
+r = await run(unbookmarkAction, {
+  cookie: 'ct0=TOK',
+  scripts: [BEARER_SCRIPT],
+  qa: () => []
+});
+check('unbookmark requests hidden-route staging when the article is absent',
+  r.out.state === 'staged', JSON.stringify(r.out));
+const stagedRedirect = build('postActionScript', {
+  k: JSON.stringify('bookmark'),
+  tid: JSON.stringify('123'),
+  stagedArg: 'true'
+});
+r = await run(stagedRedirect, {
+  cookie: 'ct0=TOK',
+  scripts: [BEARER_SCRIPT],
+  qa: () => [],
+  pathname: '/someone/status/456'
+});
+check('staged bookmark refuses a redirected status route',
+  r.out.state === 'unexpected', JSON.stringify(r.out));
 
 r = await run(scripts.dmInbox, { cookie: 'ct0=TOK', scripts: [BEARER_SCRIPT], routes: { [inboxPath]: 401 } });
 check('dm http-401 → signed-out', r.out.state === 'signed-out', r.out.state);

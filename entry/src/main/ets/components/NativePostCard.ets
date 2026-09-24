@@ -96,6 +96,7 @@ export struct NativePostCard {
       }
     }
     .padding({ top: S4, bottom: S4, right: S8 })
+    .id('post-action-' + this.post.id + '-' + kind)
     .accessibilityText(label)
     .accessibilityLevel('yes')
     .onClick(() => {

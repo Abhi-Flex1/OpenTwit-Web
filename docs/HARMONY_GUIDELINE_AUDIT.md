@@ -1322,6 +1322,36 @@ notification target text), ampersand last so `&amp;lt;` decodes one level to
   Messages 1 → 2 as real unread arrived.
 * Evidence: `screenshots/native-live-{home,notifications,messages,explore,profile,thread}.png`.
 
-Still unverified by choice: live writes. `dmSendScript` / `postActionScript`
-have correct session headers but were never fired against a real conversation
-or post, because that would notify other people.
+Before §18.6, live writes were deliberately left unverified. The bookmark
+write was subsequently verified as described below; the DM send path remains
+subject to its own reversible-device test because it can notify a real person.
+
+### 18.6 Native post bookmarks: route-safe live writes (2026-09-24)
+
+The native Home/Profile post rows now expose stable action IDs
+(`post-action-<status-id>-bookmark`) so a tap cannot be lost when the live
+timeline refreshes between selection and input. A bookmark action first asks
+the page bridge for the matching rendered article. When the hidden session
+WebView is on a different route, the shell briefly stages that post's
+`/i/web/status/<id>` route behind the native surface, retries the same bridge
+script, and restores the previous URL. The staged script checks the resolved
+route still contains the requested status ID before clicking anything.
+
+This delegates the authenticated mutation to x.com's own rendered control,
+including the current per-request transaction token. A guessed GraphQL request
+was rejected with HTTP 404 in live verification, so it was removed rather than
+kept as an unsafe fallback. The native bridge also waits up to 8 seconds for
+x.com's inverse `bookmark`/`removeBookmark` state before reporting success.
+
+Live reversible proof on the healthy API 24 target (2026-09-24):
+
+* native bookmark tap: `postAction -> {"state":"staged"}` followed by the
+  requested `/i/web/status/2103106603247714428`, then `postAction -> {"state":"ok"}`
+  and the hidden route restored to `/home`;
+* the native inverse action reached its bounded confirmation timeout, so the
+  post was then removed through x.com's own detail-page control; a direct CDP
+  check confirmed it returned to `bookmark` (unbookmarked);
+* the hidden route was restored to `/home` after both operations;
+* `node scripts/check-page-bridge.mjs`, `check-native-surfaces.mjs`,
+  `check-media-save.mjs`, `check-unread-counts.mjs`, `git diff --check`, and
+  `hvigorw --no-daemon assembleHap` all passed.

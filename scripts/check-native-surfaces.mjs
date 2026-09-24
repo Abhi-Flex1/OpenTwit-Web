@@ -59,6 +59,8 @@ check('inbox carries uid for sending', chrome.includes('uid'));
 check('inbox carries read marker for unread rows', chrome.includes('last_read_event_id'));
 check('group send targets conversation when uid is absent', chrome.includes('conversation_id:cid'));
 check('mute uses verified session routes', chrome.includes('mutes/conversations/create'));
+check('bookmark staging rejects redirected status routes',
+  chrome.includes('staged&&route.indexOf("/status/")') && chrome.includes('route.indexOf("/status/"+tid)'));
 const messages = read('entry/src/main/ets/components/NativeMessages.ets');
 check('chat bubbles use the bounded Row renderer',
   messages.includes('Row() {') &&
