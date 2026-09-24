@@ -162,6 +162,7 @@ export async function savePreparedImage(context: common.UIAbilityContext,
     try {
       await helper.applyChanges(assetRequest);
       if (assetRequest.getAsset() !== undefined && assetRequest.getAsset().uri !== '') {
+        hilog.info(DOMAIN, TAG, 'image save committed with secure asset request: %{public}s', postId);
         return MEDIA_SAVE_OK;
       }
     } catch (error) {
@@ -178,10 +179,13 @@ export async function savePreparedImage(context: common.UIAbilityContext,
     const destinations: string[] = await helper.showAssetsCreationDialogEx(
       [sourceUri], [settings]);
     if (destinations.length === 0 || destinations[0] === '') {
+      hilog.info(DOMAIN, TAG, 'image save canceled by user: %{public}s', postId);
       return MEDIA_SAVE_CANCELLED;
     }
-    return await copyPreparedFile(sourcePath, destinations[0]) ? MEDIA_SAVE_OK :
-      MEDIA_SAVE_FAILED;
+    const copied: boolean = await copyPreparedFile(sourcePath, destinations[0]);
+    hilog.info(DOMAIN, TAG, 'image save fallback completed: %{public}s result=%{public}s',
+      postId, copied ? 'ok' : 'failed');
+    return copied ? MEDIA_SAVE_OK : MEDIA_SAVE_FAILED;
   } catch (error) {
     const err: BusinessError = error as BusinessError;
     hilog.warn(DOMAIN, TAG, 'image save commit failed: %{public}d %{public}s', err.code, err.message);
