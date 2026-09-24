@@ -1448,3 +1448,19 @@ that callers using the secure control do not need to declare
 media-library grant. Adding a broad media permission would weaken the privacy
 model and is intentionally not done. The healthy foldable save proof above and
 the detached media-save contract remain the verification for this path.
+
+### 18.11 Native Messages route hydration (2026-09-25)
+
+The x.com web session transitions from `/messages` to `/i/chat` after the user
+selects Messages. The first inbox request can therefore return a transient
+error while the route is still changing. The shell now holds the native inbox
+in its loading state for a bounded 10-second route window, keeps an already
+populated inbox visible while a later poll is loading, and only exposes a
+failed state after that window or a genuine signed-out response.
+
+On the saved phone session, the first Messages capture at one second shows the
+native loading treatment without an unavailable card; the five-second capture
+contains the real Brady/Krista/John Bai inbox, and the 12- and 20-second
+captures remain populated. The native thread was opened without sending a
+message: its header, four real bubbles, timestamps, and composer rendered in
+the recovered frame.

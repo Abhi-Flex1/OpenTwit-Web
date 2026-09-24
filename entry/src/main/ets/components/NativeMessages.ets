@@ -376,7 +376,9 @@ export struct NativeMessages {
       // A route transition or a poll can briefly report loading after the
       // previous inbox was valid. Keep the list visible until a real payload
       // arrives instead of flashing an empty/unavailable surface.
-      this.dmState = incomingState;
+      if (this.conversations.length === 0) {
+        this.dmState = incomingState;
+      }
       return;
     }
     const list: NativeChatConversation[] = parseDmPayload(this.dmJson);
