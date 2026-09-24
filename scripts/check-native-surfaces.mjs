@@ -36,7 +36,7 @@ const chrome = read('entry/src/main/ets/common/WebChrome.ets');
 const surfaces = [
   'dmInboxScript', 'dmThreadScript', 'dmSendScript',
   'notificationsScript', 'homeTimelineScript', 'profileScript',
-  'trendsScript', 'searchTweetsScript', 'postActionScript'
+  'trendsScript', 'searchTweetsScript', 'postActionScript', 'profileActionScript'
 ];
 for (const fn of surfaces) {
   check(`WebChrome exports ${fn}`, chrome.includes(`function ${fn}`));
@@ -61,6 +61,10 @@ check('group send targets conversation when uid is absent', chrome.includes('con
 check('mute uses verified session routes', chrome.includes('mutes/conversations/create'));
 check('bookmark staging rejects redirected status routes',
   chrome.includes('staged&&route.indexOf("/status/")') && chrome.includes('route.indexOf("/status/"+tid)'));
+check('profile actions use the rendered follow control',
+  chrome.includes('function profileActionScript') &&
+  chrome.includes('target.click()') &&
+  chrome.includes('if(state===expected)'));
 const messages = read('entry/src/main/ets/components/NativeMessages.ets');
 check('chat bubbles use the bounded Row renderer',
   messages.includes('Row() {') &&
@@ -122,7 +126,15 @@ const profile = read('entry/src/main/ets/components/NativeProfile.ets');
 check('external profiles do not show Edit profile',
   profile.includes('@Prop isOwnProfile: boolean = false;') &&
   profile.includes('if (this.isOwnProfile) {'));
+check('external profiles expose follow and unfollow callbacks',
+  profile.includes('onProfileAction: (handle: string, follow: boolean)') &&
+  profile.includes('profile_follow') && profile.includes('profile_following'));
 const main = read('entry/src/main/ets/pages/MainTabs.ets');
+check('shell owns profile action staging and completion',
+  main.includes('private runProfileAction') &&
+  main.includes('private stageProfileAction') &&
+  main.includes('private finishProfileAction') &&
+  main.includes('scheduleStagedProfileAction'));
 check('chat media sends are isolated from text sends',
   main.includes('sendDmMedia') &&
   main.includes('dmMediaUploadScript') &&
@@ -213,7 +225,8 @@ const baseKeys = new Set(parsed[0].string.map((s) => s.name));
 const required = [
   'home_signed_out_title', 'home_unavailable_title', 'home_empty_title',
   'notif_empty_title', 'notif_liked', 'notif_followed',
-  'profile_edit', 'profile_followers', 'profile_no_posts',
+  'profile_edit', 'profile_follow', 'profile_following', 'profile_action_failed',
+  'profile_followers', 'profile_no_posts',
   'explore_trends_title', 'explore_no_results_title',
   'post_like', 'post_repost', 'post_bookmark', 'post_unbookmark', 'post_action_failed',
   'messages_loading_thread', 'messages_send_unavailable',

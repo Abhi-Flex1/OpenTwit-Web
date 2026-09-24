@@ -13,6 +13,7 @@ interface BridgeProfileUser {
   location: string;
   followers: number;
   following: number;
+  followState: string;
   posts: number;
   at: number;
 }
@@ -81,6 +82,8 @@ export struct NativeProfile {
   };
   onEditProfile: () => void = () => {
   };
+  onProfileAction: (handle: string, follow: boolean) => void = () => {
+  };
   onSignIn: () => void = () => {
   };
 
@@ -104,6 +107,7 @@ export struct NativeProfile {
             location: payload.user.location ?? '',
             followers: payload.user.followers ?? 0,
             following: payload.user.following ?? 0,
+            followState: payload.user.followState ?? 'unavailable',
             posts: payload.user.posts ?? 0,
             at: payload.user.at ?? 0
           };
@@ -217,6 +221,22 @@ export struct NativeProfile {
               .fontSize(14)
               .onClick(() => {
                 this.onEditProfile();
+              })
+          } else if (this.user !== undefined && this.user.followState === 'follow') {
+            Button($r('app.string.profile_follow'))
+              .type(ButtonType.Capsule)
+              .fontFamily(FONT_FAMILY)
+              .fontSize(14)
+              .onClick(() => {
+                this.onProfileAction(this.user?.handle ?? this.viewingHandle, true);
+              })
+          } else if (this.user !== undefined && this.user.followState === 'following') {
+            Button($r('app.string.profile_following'))
+              .type(ButtonType.Capsule)
+              .fontFamily(FONT_FAMILY)
+              .fontSize(14)
+              .onClick(() => {
+                this.onProfileAction(this.user?.handle ?? this.viewingHandle, false);
               })
           }
         }

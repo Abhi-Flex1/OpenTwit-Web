@@ -365,8 +365,16 @@
       "value": "Edit profile"
     },
     {
+      "name": "profile_follow",
+      "value": "Follow"
+    },
+    {
       "name": "profile_following",
       "value": "Following"
+    },
+    {
+      "name": "profile_action_failed",
+      "value": "That didn't work. Try again."
     },
     {
       "name": "profile_followers",

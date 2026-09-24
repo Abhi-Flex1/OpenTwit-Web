@@ -551,6 +551,26 @@ export function profileScript(handle: string, more: string): string {
     'if(u2.length>=10&&u2.substring(u2.length-10)==="/following")fing=num(lks[li].innerText);' +
     'else if(u2.length>=10&&u2.substring(u2.length-10)==="/followers")fers=num(lks[li].innerText);' +
     'else if(u2.length>=19&&u2.substring(u2.length-19)==="/verified_followers")fers=num(lks[li].innerText);}}catch(e){}' +
+    'var followState="unavailable";try{var followKind=function(s){' +
+    'var v=String(s||"").toLowerCase().trim();' +
+    'if(v==="follow"||v==="follow back"||v==="follow_back"||v==="关注"||' +
+    'v==="关注此账号"||v==="متابعة")return "follow";' +
+    'if(v==="following"||v==="unfollow"||v==="已关注"||v==="正在关注"||' +
+    'v==="取消关注"||v==="يتابع"||v==="إلغاء المتابعة")return "following";return "";};' +
+    'var followPath=function(h){var p=String(h||"").split("?")[0].split("#")[0].toLowerCase();' +
+    'var at=p.indexOf("x.com/");if(at>=0)p=p.substring(at+6);' +
+    'while(p.charAt(0)==="/")p=p.substring(1);' +
+    'while(p.length>0&&p.charAt(p.length-1)==="/")p=p.substring(0,p.length-1);' +
+    'var parts=p.split("/");' +
+    'return parts.length>0?parts[parts.length-1]:"";};' +
+    'var followLabel=function(link){var owner=link.parentElement;var button=owner?owner.querySelector("button"):null;' +
+    'if(!button&&owner&&owner.parentElement)button=owner.parentElement.querySelector("button");' +
+    'var buttonLabel=button?followKind(button.getAttribute("aria-label")||button.innerText||button.textContent):"";' +
+    'return buttonLabel||followKind(link.getAttribute("aria-label"));};' +
+    'var followLinks=document.querySelectorAll("a[aria-label]");' +
+    'for(var f=0;f<followLinks.length;f++){var follow=followLabel(followLinks[f]);' +
+    'if(!follow)continue;if(followPath(followLinks[f].getAttribute("href"))===want.toLowerCase())' +
+    '{followState=follow;break;}}}catch(e){}' +
     'var posts=[];try{var arts=document.querySelectorAll("article[data-testid=tweet]");' +
     'for(var pi=0;pi<arts.length&&posts.length<25;pi++){var a=arts[pi];' +
     'var ah="";try{var links=a.querySelectorAll("a[href]");' +
@@ -575,8 +595,65 @@ export function profileScript(handle: string, more: string): string {
     'likes:lk,reposts:rt,replies:rp,liked:liked,reposted:reposted,bookmarked:bookmarked,media:""});}}catch(e){}' +
     'if(!nm&&!posts.length)return JSON.stringify({state:"empty"});' +
     'return JSON.stringify({state:"ok",user:{name:nm,handle:hm,avatar:avatar,banner:banner,' +
-    'bio:bio,location:"",followers:fers,following:fing,posts:0,at:0},' +
+    'bio:bio,location:"",followers:fers,following:fing,followState:followState,posts:0,at:0},' +
     'posts:posts,next:(posts.length>=25?"more":"")});');
+}
+
+// Follow / unfollow through x.com's rendered profile control. The shell may
+// briefly stage the requested profile route when the hidden WebView is on a
+// different page; the route check keeps a late callback from clicking the
+// wrong account. The action is idempotent: if the desired state is already
+// visible, it succeeds without firing a second mutation.
+export function profileActionScript(handle: string, follow: boolean,
+  staged: boolean = false): string {
+  const h: string = JSON.stringify(handle.replace('@', ''));
+  const followArg: string = follow ? 'true' : 'false';
+  const stagedArg: string = staged ? 'true' : 'false';
+  return pageBridgeScript(
+    'var want=' + h + ';var follow=' + followArg + ';var staged=' + stagedArg + ';' +
+    'if(!want)return JSON.stringify({state:"empty"});' +
+    'var targetRoute=String(want).replace(/^@/,"").toLowerCase();' +
+    'var route=String((window.location&&window.location.pathname)||"").toLowerCase();' +
+    'while(route.charAt(0)==="/")route=route.substring(1);' +
+    'while(route.length>0&&route.charAt(route.length-1)==="/")route=route.substring(0,route.length-1);' +
+    'if(route!==targetRoute)return JSON.stringify({state:staged?"unexpected":"staged"});' +
+    'var wanted=follow?"follow":"following";var expected=follow?"following":"follow";' +
+    'var target=null;var state="unavailable";' +
+    'try{var followKind=function(s){' +
+    'var v=String(s||"").toLowerCase().trim();' +
+    'if(v==="follow"||v==="follow back"||v==="follow_back"||v==="关注"||' +
+    'v==="关注此账号"||v==="متابعة")return "follow";' +
+    'if(v==="following"||v==="unfollow"||v==="已关注"||v==="正在关注"||' +
+    'v==="取消关注"||v==="يتابع"||v==="إلغاء المتابعة")return "following";return "";};' +
+    'var followPath=function(h){var p=String(h||"").split("?")[0].split("#")[0].toLowerCase();' +
+    'var at=p.indexOf("x.com/");if(at>=0)p=p.substring(at+6);' +
+    'while(p.charAt(0)==="/")p=p.substring(1);' +
+    'while(p.length>0&&p.charAt(p.length-1)==="/")p=p.substring(0,p.length-1);' +
+    'var parts=p.split("/");' +
+    'return parts.length>0?parts[parts.length-1]:"";};' +
+    'var followLabel=function(link){var owner=link.parentElement;var button=owner?owner.querySelector("button"):null;' +
+    'if(!button&&owner&&owner.parentElement)button=owner.parentElement.querySelector("button");' +
+    'var buttonLabel=button?followKind(button.getAttribute("aria-label")||button.innerText||button.textContent):"";' +
+    'return buttonLabel||followKind(link.getAttribute("aria-label"));};' +
+    'var followLinks=document.querySelectorAll("a[aria-label]");' +
+    'for(var i=0;i<followLinks.length;i++){var link=followLinks[i];var label=followLabel(link);' +
+    'if(!label||followPath(link.getAttribute("href"))!==targetRoute)continue;state=label;if(state!==wanted)continue;' +
+    'var owner=link.parentElement;if(owner)target=owner.querySelector("button");' +
+    'if(!target&&owner&&owner.parentElement)target=owner.parentElement.querySelector("button");' +
+    'if(target)break;}}' +
+    'catch(e){}' +
+    'if(state===expected)return JSON.stringify({state:"ok"});' +
+    'if(!target)return JSON.stringify({state:"staged"});' +
+    'target.click();' +
+    'for(var wait=0;wait<80;wait++){try{var currentLabel="";' +
+    'var currentLinks=document.querySelectorAll("a[aria-label]");' +
+    'for(var j=0;j<currentLinks.length;j++){var currentLink=currentLinks[j];' +
+    'if(followPath(currentLink.getAttribute("href"))===targetRoute){' +
+    'currentLabel=followLabel(currentLink);break;}}' +
+    'if(!currentLabel)currentLabel=followKind(target.getAttribute("aria-label")||target.innerText||target.textContent);' +
+    'if(currentLabel===expected)return JSON.stringify({state:"ok"});}catch(e){}' +
+    'await new Promise(function(resolve){setTimeout(resolve,100);});}' +
+    'return JSON.stringify({state:"unexpected"});');
 }
 // Trends for Explore. Returns named topics with optional volume.
 export function trendsScript(): string {

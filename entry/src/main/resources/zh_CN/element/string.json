@@ -365,8 +365,16 @@
       "value": "编辑资料"
     },
     {
+      "name": "profile_follow",
+      "value": "关注"
+    },
+    {
       "name": "profile_following",
       "value": "正在关注"
+    },
+    {
+      "name": "profile_action_failed",
+      "value": "操作失败，请重试。"
     },
     {
       "name": "profile_followers",

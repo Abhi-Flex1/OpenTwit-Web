@@ -43,6 +43,7 @@ export interface NativeProfileUser {
   location: string;
   followers: number;
   following: number;
+  followState: string;
   posts: number;
   at: number;
 }

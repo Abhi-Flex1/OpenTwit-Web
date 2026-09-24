@@ -652,6 +652,9 @@ const profileDoc = {
     return null;
   },
   qa(sel) {
+    if (sel === 'a[aria-label]') {
+      return [followLink('Follow', '/Abhi_Flex')];
+    }
     if (sel === 'img[src*=profile_images]') {
       return [fakeEl({ src: 'https://x/small_x96.jpg', rect: { width: 40, top: 719 } }),
         fakeEl({ src: 'https://x/big_400x400.jpg', rect: { width: 134, top: 184 } })];
@@ -685,6 +688,8 @@ check('profile posts', r.out.posts?.length === 1 && r.out.posts[0]?.id === '123'
   JSON.stringify(r.out.posts).slice(0, 120));
 check('profile carries bookmark state', r.out.posts?.[0]?.bookmarked === true,
   JSON.stringify(r.out.posts?.[0]));
+check('profile reports the requested follow state',
+  r.out.user?.followState === 'follow', JSON.stringify(r.out.user));
 r = await run(profileScriptSrc, { cookie: '', scripts: [] });
 check('profile no cookie → signed-out', r.out.state === 'signed-out', r.out.state);
 r = await run(profileScriptSrc, {
@@ -692,6 +697,147 @@ r = await run(profileScriptSrc, {
   qs: () => null, qa: () => []
 });
 check('profile unrendered → loading', r.out.state === 'loading', r.out.state);
+
+// Follow / unfollow uses the same rendered control x.com owns. Keep the
+// fixture's link and button in the real sibling shape: the overlay link owns
+// the accessible label while the button owns the click handler.
+function followFixture(initial = 'follow', handle = 'Abhi_Flex', extra = false) {
+  let state = initial;
+  let clicks = 0;
+  const button = {
+    innerText: state === 'follow' ? 'Follow' : 'Following',
+    textContent: '',
+    getAttribute(name) {
+      if (name === 'aria-label') return state === 'follow' ? 'Follow' : 'Following';
+      return null;
+    },
+    click() {
+      clicks += 1;
+      state = state === 'follow' ? 'following' : 'follow';
+      button.innerText = state === 'follow' ? 'Follow' : 'Following';
+    }
+  };
+  const other = extra ? followFixture(initial, 'SomeoneElse') : null;
+  const link = followLink(() => state, `/${handle}`, button);
+  const otherLink = other ? other.link : null;
+  return {
+    link,
+    otherLink,
+    get state() { return state; },
+    get clicks() { return clicks; },
+    get otherClicks() { return other?.clicks ?? 0; }
+  };
+}
+
+function followLink(labelOrGetter, href, button = null) {
+  const link = {
+    getAttribute(name) {
+      if (name === 'aria-label') {
+        return typeof labelOrGetter === 'function' ? labelOrGetter() : labelOrGetter;
+      }
+      if (name === 'href') return href;
+      return null;
+    },
+    parentElement: null
+  };
+  const owner = {
+    querySelector(selector) {
+      return selector === 'button' ? button : null;
+    }
+  };
+  link.parentElement = owner;
+  return link;
+}
+
+const followAction = build('profileActionScript', {
+  h: JSON.stringify('Abhi_Flex'),
+  followArg: 'true',
+  stagedArg: 'false'
+});
+const unfollowAction = build('profileActionScript', {
+  h: JSON.stringify('Abhi_Flex'),
+  followArg: 'false',
+  stagedArg: 'false'
+});
+try {
+  new Function('document', 'window', 'fetch', `return (${followAction})`);
+  new Function('document', 'window', 'fetch', `return (${unfollowAction})`);
+  check('profile action scripts parse', true);
+} catch (e) {
+  check('profile action scripts parse', false, e.message.slice(0, 120));
+}
+
+const followCase = followFixture('follow', 'Abhi_Flex', true);
+r = await run(followAction, {
+  cookie: 'ct0=TOK',
+  scripts: [BEARER_SCRIPT],
+  pathname: '/Abhi_Flex',
+  qa: (sel) => sel === 'a[aria-label]' ? [followCase.link, followCase.otherLink].filter(Boolean) : []
+});
+check('follow clicks the requested profile control',
+  r.out.state === 'ok' && followCase.state === 'following' && followCase.clicks === 1 &&
+  followCase.otherClicks === 0,
+  JSON.stringify({ out: r.out, state: followCase.state, clicks: followCase.clicks }));
+
+const followingProfileDoc = {
+  qs: profileDoc.qs,
+  qa(sel) {
+    if (sel === 'a[aria-label]') return [followLink('Following', '/Abhi_Flex')];
+    return profileDoc.qa(sel);
+  }
+};
+r = await run(profileScriptSrc, {
+  cookie: 'ct0=TOK',
+  scripts: [BEARER_SCRIPT],
+  qs: followingProfileDoc.qs,
+  qa: followingProfileDoc.qa
+});
+check('profile reports following state from rendered control',
+  r.out.user?.followState === 'following', JSON.stringify(r.out.user));
+
+const unfollowCase = followFixture('following', 'Abhi_Flex');
+r = await run(unfollowAction, {
+  cookie: 'ct0=TOK',
+  scripts: [BEARER_SCRIPT],
+  pathname: '/Abhi_Flex',
+  qa: (sel) => sel === 'a[aria-label]' ? [unfollowCase.link] : []
+});
+check('unfollow clicks the requested profile control',
+  r.out.state === 'ok' && unfollowCase.state === 'follow' && unfollowCase.clicks === 1,
+  JSON.stringify({ out: r.out, state: unfollowCase.state, clicks: unfollowCase.clicks }));
+
+const idempotentCase = followFixture('following', 'Abhi_Flex');
+r = await run(followAction, {
+  cookie: 'ct0=TOK',
+  scripts: [BEARER_SCRIPT],
+  pathname: '/Abhi_Flex',
+  qa: (sel) => sel === 'a[aria-label]' ? [idempotentCase.link] : []
+});
+check('already-following follow is idempotent',
+  r.out.state === 'ok' && idempotentCase.state === 'following' && idempotentCase.clicks === 0,
+  JSON.stringify({ out: r.out, state: idempotentCase.state, clicks: idempotentCase.clicks }));
+
+r = await run(followAction, {
+  cookie: 'ct0=TOK',
+  scripts: [BEARER_SCRIPT],
+  pathname: '/someone-else',
+  qa: () => []
+});
+check('follow on a different route requests staging', r.out.state === 'staged', JSON.stringify(r.out));
+
+const stagedFollow = build('profileActionScript', {
+  h: JSON.stringify('Abhi_Flex'),
+  followArg: 'true',
+  stagedArg: 'true'
+});
+r = await run(stagedFollow, {
+  cookie: 'ct0=TOK',
+  scripts: [BEARER_SCRIPT],
+  pathname: '/SomeoneElse',
+  qa: () => []
+});
+check('staged follow refuses a redirected profile route',
+  r.out.state === 'unexpected', JSON.stringify(r.out));
 
 // session identity: the inbox names its participants, so the signed-in account
 // is the one in the most one-to-one conversations — its own entry gives handle

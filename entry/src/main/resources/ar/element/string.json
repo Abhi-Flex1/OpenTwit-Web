@@ -365,8 +365,16 @@
       "value": "تعديل الملف"
     },
     {
+      "name": "profile_follow",
+      "value": "متابعة"
+    },
+    {
       "name": "profile_following",
       "value": "يتابع"
+    },
+    {
+      "name": "profile_action_failed",
+      "value": "تعذّر ذلك. حاول مرة أخرى."
     },
     {
       "name": "profile_followers",

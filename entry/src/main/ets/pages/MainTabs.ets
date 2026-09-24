@@ -27,7 +27,8 @@ import {
   ONLINE_PATCH, immersiveInsetScript, dmInboxScript, dmThreadScript, dmSendScript, dmMediaClearScript,
   dmMediaPickScript, dmMediaUploadScript, dmMuteScript,
   notificationsScript, homeTimelineScript, profileScript, trendsScript,
-  searchTweetsScript, postActionScript, sessionIdentityScript, SESSION_WATCHER
+  searchTweetsScript, postActionScript, profileActionScript, sessionIdentityScript,
+  SESSION_WATCHER
 } from '../common/WebChrome';
 import {
   prepareRemoteImage, savePreparedImage, discardPreparedImage,
@@ -231,6 +232,7 @@ interface ProfileBridgeUser {
   location: string;
   followers: number;
   following: number;
+  followState: string;
   posts: number;
   at: number;
 }
@@ -260,6 +262,14 @@ interface BridgePending {
 interface PendingPostAction {
   kind: string;
   id: string;
+  returnUrl: string;
+  staged: boolean;
+  attempts: number;
+}
+
+interface PendingProfileAction {
+  handle: string;
+  follow: boolean;
   returnUrl: string;
   staged: boolean;
   attempts: number;
@@ -407,6 +417,8 @@ struct MainTabs {
   // surface.
   private pendingPostAction: PendingPostAction | null = null;
   private postActionStageTimer: number = -1;
+  private pendingProfileAction: PendingProfileAction | null = null;
+  private profileActionStageTimer: number = -1;
   private dmMediaPickConversation: string = '';
   private dmMediaConversation: string = '';
   private dmMediaPreviewUri: string = '';
@@ -849,6 +861,11 @@ struct MainTabs {
         this.applyBridgeResult(name, key, '{"state":"error"}');
       } else if (name === 'sendDmMedia') {
         this.applyBridgeResult(name, key, '{"state":"error"}');
+      } else if (name === 'profileAction') {
+        // A write is never retried blindly: the page may have accepted the
+        // mutation just as the WebView context went away. Let its owning state
+        // machine reconcile the result once, then restore or report honestly.
+        this.applyBridgeResult(name, key, '{"state":"error"}');
       } else {
         this.retryBridgeSoon(name);
       }
@@ -891,6 +908,9 @@ struct MainTabs {
     if (this.pendingPostAction !== null && !this.pendingPostAction.staged) {
       this.finishPostAction(false);
     }
+    if (this.pendingProfileAction !== null && !this.pendingProfileAction.staged) {
+      this.finishProfileAction(false);
+    }
     if (mediaConversation !== '') {
       this.clearDmMediaForConversation(mediaConversation);
       this.dmMediaResultJson = JSON.stringify({
@@ -918,7 +938,7 @@ struct MainTabs {
     // error or empty. Retry it in a couple of seconds rather than leaving the
     // surface showing a failure until the next full poll (25 s on Home).
     const isWriteBridge: boolean = name === 'sendDm' || name === 'sendDmMedia' ||
-      name === 'dmMute' || name === 'postAction';
+      name === 'dmMute' || name === 'postAction' || name === 'profileAction';
     if (!isWriteBridge &&
       (json.indexOf('"state":"error"') >= 0 || json.indexOf('"state":"unexpected"') >= 0)) {
       this.retryBridgeSoon(name);
@@ -1063,6 +1083,17 @@ struct MainTabs {
         this.finishPostAction(true);
       } else {
         this.finishPostAction(false);
+      }
+    } else if (name === 'profileAction') {
+      if (this.pendingProfileAction === null) {
+        return;
+      }
+      if (json.indexOf('"state":"staged"') >= 0) {
+        this.stageProfileAction();
+      } else if (json.indexOf('"state":"ok"') >= 0) {
+        this.finishProfileAction(true);
+      } else {
+        this.finishProfileAction(false);
       }
     }
   }
@@ -2263,6 +2294,85 @@ struct MainTabs {
       this.refreshVisibleSurface();
     } else {
       this.toast($r('app.string.post_action_failed'));
+    }
+  }
+
+  // --- Profile follow / unfollow: one guarded native action ------------------
+
+  private runProfileAction(handle: string, follow: boolean): void {
+    if (!this.signedIn() || handle === '' || this.pendingProfileAction !== null) {
+      return;
+    }
+    const clean: string = handle.charAt(0) === '@' ? handle.substring(1) : handle;
+    if (clean === '' || this.ownHandle.toLowerCase() === clean.toLowerCase()) {
+      return;
+    }
+    const returnUrl: string = this.currentUrl !== '' ? this.currentUrl : profileUrl(clean);
+    this.pendingProfileAction = {
+      handle: clean,
+      follow: follow,
+      returnUrl: returnUrl,
+      staged: false,
+      attempts: 0
+    };
+    this.runBridge('profileAction', profileActionScript(clean, follow), clean.toLowerCase());
+  }
+
+  private stageProfileAction(): void {
+    const action: PendingProfileAction | null = this.pendingProfileAction;
+    if (action === null) {
+      return;
+    }
+    if (!action.staged) {
+      action.staged = true;
+      this.loadWeb(profileUrl(action.handle));
+      return;
+    }
+    if (action.attempts >= 5) {
+      this.finishProfileAction(false);
+      return;
+    }
+    this.scheduleStagedProfileAction();
+  }
+
+  private scheduleStagedProfileAction(): void {
+    const action: PendingProfileAction | null = this.pendingProfileAction;
+    if (action === null || !action.staged) {
+      return;
+    }
+    if (this.profileActionStageTimer !== -1) {
+      clearTimeout(this.profileActionStageTimer);
+    }
+    this.profileActionStageTimer = setTimeout(() => {
+      this.profileActionStageTimer = -1;
+      const current: PendingProfileAction | null = this.pendingProfileAction;
+      if (current === null || !current.staged) {
+        return;
+      }
+      current.attempts++;
+      this.runBridge('profileAction',
+        profileActionScript(current.handle, current.follow, true), current.handle.toLowerCase());
+    }, 1200);
+  }
+
+  private finishProfileAction(success: boolean): void {
+    const action: PendingProfileAction | null = this.pendingProfileAction;
+    this.pendingProfileAction = null;
+    if (this.profileActionStageTimer !== -1) {
+      clearTimeout(this.profileActionStageTimer);
+      this.profileActionStageTimer = -1;
+    }
+    if (action !== null && action.staged && action.returnUrl !== '') {
+      this.loadWeb(action.returnUrl);
+    }
+    if (success) {
+      this.tick();
+      if (this.currentIndex === 4 && !this.webLoginOpen && !this.webDetailOpen &&
+        this.viewingHandle.toLowerCase() === action?.handle.toLowerCase()) {
+        this.refreshProfile(action.handle);
+      }
+    } else {
+      this.toast($r('app.string.profile_action_failed'));
     }
   }
 
@@ -3586,6 +3696,7 @@ struct MainTabs {
         }
         this.schedulePageStateRead();
         this.scheduleStagedPostAction();
+        this.scheduleStagedProfileAction();
         if (this.ownHandle === '') {
           // A restored session can show up with no navigation at all; the
           // session read answers on any page.
@@ -3863,6 +3974,9 @@ struct MainTabs {
           },
           onEditProfile: () => {
             this.openWebDetail(TWITTER_EDIT_PROFILE);
+          },
+          onProfileAction: (handle: string, follow: boolean) => {
+            this.runProfileAction(handle, follow);
           },
           onSignIn: () => {
             this.openWebLogin();
