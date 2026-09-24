@@ -70,7 +70,6 @@ export async function saveRemoteImage(context: common.UIAbilityContext, url: str
   const request: http.HttpRequest = http.createHttp();
   let sourcePath: string = '';
   let sourceFile: fileIo.File | undefined = undefined;
-  let destinationFile: fileIo.File | undefined = undefined;
   let helper: photoAccessHelper.PhotoAccessHelper | undefined = undefined;
   try {
     const response: http.HttpResponse = await request.request(url, {
@@ -113,14 +112,11 @@ export async function saveRemoteImage(context: common.UIAbilityContext, url: str
     if (destinations.length === 0 || destinations[0] === '') {
       return MEDIA_SAVE_CANCELLED;
     }
-
-    destinationFile = await fileIo.open(destinations[0], fileIo.OpenMode.READ_WRITE);
-    sourceFile = await fileIo.open(sourcePath, fileIo.OpenMode.READ_ONLY);
-    await fileIo.copyFile(sourceFile.fd, destinationFile.fd);
-    await closeFile(sourceFile);
-    sourceFile = undefined;
-    await closeFile(destinationFile);
-    destinationFile = undefined;
+    // HarmonyOS 6.1's authorized save extension creates the media-library
+    // asset from the supplied sandbox URI before resolving this promise. The
+    // returned value is an internal destination handle, not a path that
+    // fileIo.open() can reopen; copying again reports a false failure after
+    // the system save has already succeeded.
     return MEDIA_SAVE_OK;
   } catch (error) {
     const err: BusinessError = error as BusinessError;
@@ -128,7 +124,6 @@ export async function saveRemoteImage(context: common.UIAbilityContext, url: str
     return MEDIA_SAVE_FAILED;
   } finally {
     await closeFile(sourceFile);
-    await closeFile(destinationFile);
     request.destroy();
     if (helper !== undefined) {
       try {

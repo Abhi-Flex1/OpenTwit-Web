@@ -25,8 +25,8 @@ check('validates response and size', saver.includes('responseCode < 200') &&
   saver.includes('bytes.byteLength > MAX_IMAGE_BYTES'));
 check('writes through a sandbox file URI', saver.includes('fileUri.getUriFromPath(sourcePath)'));
 check('uses native save authorization', saver.includes('showAssetsCreationDialog'));
-check('copies only after user approval', saver.indexOf('showAssetsCreationDialog') <
-  saver.indexOf('fileIo.copyFile'));
+check('does not reopen the system destination handle', !saver.includes('fileIo.copyFile') &&
+  !saver.includes('fileIo.open(destinations[0]'));
 check('closes files and destroys request', saver.includes('request.destroy()') &&
   saver.includes('fileIo.close(file)'));
 check('always removes temporary media', saver.includes('fileIo.unlink(sourcePath)'));
