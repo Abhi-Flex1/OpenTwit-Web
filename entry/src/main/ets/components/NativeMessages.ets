@@ -8,8 +8,35 @@ export interface NativeChatMessage {
   text: string;
   outgoing: boolean;
   kind: 'text' | 'post';
+  mediaUrl: string;
+  mediaAlt: string;
   time: string;
   at: number;
+}
+
+export interface NativeChatAttachment {
+  name: string;
+  size: number;
+  mimeType: string;
+  preview: string;
+}
+
+export interface NativeDmMediaResult {
+  conversationId: string;
+  payload: string;
+  nonce: string;
+  localMessageId: string;
+}
+
+interface DmMediaPayload {
+  state: string;
+  name?: string;
+  size?: number;
+  mimeType?: string;
+  preview?: string;
+  previewUri?: string;
+  messageId?: string;
+  localMessageId?: string;
 }
 
 export interface NativeChatConversation {
@@ -40,6 +67,8 @@ interface DmPayloadConversation {
   at: number;
   muted: boolean;
   unread: number;
+  mediaUrl: string;
+  mediaAlt: string;
 }
 
 interface DmPayload {
@@ -53,6 +82,8 @@ interface DmThreadMessage {
   text: string;
   out: boolean;
   at: number;
+  mediaUrl: string;
+  mediaAlt: string;
 }
 
 interface DmThreadPayload {
@@ -87,8 +118,24 @@ const PUSH_MS: number = 260;
 const POP_MS: number = 220;
 
 function message(id: string, text: string, outgoing: boolean, time: string,
-  at: number, kind: 'text' | 'post' = 'text'): NativeChatMessage {
-  return { id, text, outgoing, kind, time, at };
+  at: number, kind: 'text' | 'post' = 'text', mediaUrl: string = '',
+  mediaAlt: string = ''): NativeChatMessage {
+  return { id, text, outgoing, kind, mediaUrl, mediaAlt, time, at };
+}
+
+function messagePreview(item: NativeChatMessage): string {
+  if (item.text !== '') {
+    return item.text;
+  }
+  return item.mediaUrl === '' ? '' : 'Photo';
+}
+
+function hasServerEcho(item: NativeChatMessage, serverTexts: Record<string, boolean>): boolean {
+  const text: string = item.text.trim();
+  if (text !== '' && serverTexts[text] === true) {
+    return true;
+  }
+  return false;
 }
 
 // The native Messages surface renders whatever the account actually has. The DM
@@ -114,13 +161,16 @@ export function parseDmPayload(json: string): NativeChatConversation[] {
   for (let i: number = 0; i < source.length; i++) {
     const item: DmPayloadConversation = source[i];
     const name: string = item.name !== '' ? item.name : item.handle;
+    const mediaUrl: string = item.mediaUrl ?? '';
+    const mediaAlt: string = item.mediaAlt ?? 'Image';
+    const preview: string = item.text !== '' ? item.text : (mediaUrl !== '' ? 'Photo' : '');
     out.push({
       id: item.id,
       name: name,
       handle: item.handle,
       avatar: item.avatar,
       uid: item.uid ?? '',
-      preview: item.out ? 'You: ' + item.text : item.text,
+      preview: item.out ? 'You: ' + preview : preview,
       time: relativeTime(item.at),
       at: item.at,
       unread: item.unread ?? 0,
@@ -128,9 +178,18 @@ export function parseDmPayload(json: string): NativeChatConversation[] {
       // The inbox carries the newest message per conversation, so the thread
       // opens on the real one rather than on an empty page. Full history
       // arrives separately through the thread payload (see onThreadChanged).
-      messages: item.text === ''
+      messages: item.text === '' && mediaUrl === ''
         ? []
-        : [message('dm-' + item.id + '-0', item.text, item.out, relativeTime(item.at), item.at)]
+        : [message(
+          'dm-' + item.id + '-0',
+          item.text,
+          item.out,
+          relativeTime(item.at),
+          item.at,
+          mediaUrl === '' ? 'text' : 'post',
+          mediaUrl,
+          mediaAlt
+        )]
     });
   }
   return out;
@@ -207,6 +266,7 @@ export struct NativeMessages {
   // Full history for the open conversation, verbatim from dmThreadScript.
   @Prop @Watch('onThreadChanged') threadJson: string = '';
   @Prop @Watch('onSendStateChanged') sendStateJson: string = '';
+  @Prop @Watch('onDmMediaChanged') dmMediaResultJson: string = '';
   @State conversations: NativeChatConversation[] = [];
   // What the bridge said about the account, so the surface can be honest about
   // why there is nothing to show.
@@ -217,6 +277,12 @@ export struct NativeMessages {
   @State searchText: string = '';
   @State composerText: string = '';
   @State sending: boolean = false;
+  @State attachment: NativeChatAttachment = {
+    name: '',
+    size: 0,
+    mimeType: '',
+    preview: ''
+  };
   // Drives the inbox <-> thread push. It lives here rather than in the shell so
   // the slide runs even when the shell only flips its own title state, which is
   // what the header back arrow and the system back gesture both do.
@@ -231,6 +297,12 @@ export struct NativeMessages {
   onRequestThread: (id: string) => void = () => {
   };
   onSendMessage: (id: string, uid: string, text: string, messageId: string) => void = () => {
+  };
+  onRequestMedia: (id: string) => void = () => {
+  };
+  onSendMedia: (id: string, text: string, messageId: string) => void = () => {
+  };
+  onRemoveAttachment: (id: string) => void = () => {
   };
   onMuteConversation: (id: string, muted: boolean) => void = () => {
   };
@@ -263,11 +335,12 @@ export struct NativeMessages {
         // send does not appear twice.
         const serverTexts: Record<string, boolean> = {};
         for (let s: number = 0; s < list[i].messages.length; s++) {
-          serverTexts[list[i].messages[s].text.trim()] = true;
+          const server: NativeChatMessage = list[i].messages[s];
+          serverTexts[server.text.trim()] = true;
         }
         const fresh: NativeChatMessage[] = [];
         for (let m: number = 0; m < mine.length; m++) {
-          if (!serverTexts[mine[m].text.trim()]) {
+          if (!hasServerEcho(mine[m], serverTexts)) {
             fresh.push(mine[m]);
           }
         }
@@ -310,10 +383,19 @@ export struct NativeMessages {
     const src = parsed.messages;
     for (let i: number = 0; i < src.length; i++) {
       const m = src[i];
-      if (!m || !m.text) {
+      if (!m || (!m.text && !m.mediaUrl)) {
         continue;
       }
-      server.push(message('srv-' + m.id, m.text, m.out, relativeTime(m.at), m.at));
+      server.push(message(
+        'srv-' + m.id,
+        m.text,
+        m.out,
+        relativeTime(m.at),
+        m.at,
+        m.mediaUrl === '' ? 'text' : 'post',
+        m.mediaUrl,
+        m.mediaAlt
+      ));
     }
     const mine: NativeChatMessage[] = conversation.messages.filter(
       (m: NativeChatMessage) => m.id.indexOf('sent-') === 0);
@@ -323,7 +405,7 @@ export struct NativeMessages {
     }
     const fresh: NativeChatMessage[] = [];
     for (let m: number = 0; m < mine.length; m++) {
-      if (!serverTexts[mine[m].text.trim()]) {
+      if (!hasServerEcho(mine[m], serverTexts)) {
         fresh.push(mine[m]);
       }
     }
@@ -332,7 +414,8 @@ export struct NativeMessages {
     this.activeMessages = merged.slice();
     if (merged.length > 0) {
       const last: NativeChatMessage = merged[merged.length - 1];
-      conversation.preview = (last.outgoing ? 'You: ' : '') + last.text;
+      const preview: string = messagePreview(last);
+      conversation.preview = (last.outgoing ? 'You: ' : '') + preview;
       conversation.time = last.time;
     }
     this.conversations = this.conversations.slice();
@@ -377,7 +460,7 @@ export struct NativeMessages {
       if (payload.state === 'error') {
         this.removePendingMessage(payload.messageId, true);
         this.sending = false;
-      } else if (payload.state === 'ok') {
+      } else if (payload.state === 'ok' || payload.state === 'accepted') {
         this.sending = false;
       }
     } catch (err) {
@@ -392,7 +475,52 @@ export struct NativeMessages {
     }
   }
 
+  onDmMediaChanged(): void {
+    if (this.dmMediaResultJson === '') {
+      return;
+    }
+    try {
+      const result: NativeDmMediaResult = JSON.parse(this.dmMediaResultJson) as NativeDmMediaResult;
+      if (result.conversationId !== this.selectedId) {
+        return;
+      }
+      const payload: DmMediaPayload = JSON.parse(result.payload) as DmMediaPayload;
+      if (payload.state === 'selected') {
+        this.attachment = {
+          name: payload.name ?? 'Image',
+          size: payload.size ?? 0,
+          mimeType: payload.mimeType ?? '',
+          preview: payload.previewUri ?? ''
+        };
+        this.toast($r('app.string.messages_attachment_selected'));
+      } else if (payload.state === 'ok') {
+        if (result.localMessageId !== undefined && result.localMessageId !== '') {
+          this.removePendingMessage(result.localMessageId, false);
+        }
+        this.attachment = { name: '', size: 0, mimeType: '', preview: '' };
+        this.sending = false;
+        this.composerText = '';
+      } else if (payload.state === 'cancelled' ||
+        payload.state === 'navigation-cancelled') {
+        this.attachment = { name: '', size: 0, mimeType: '', preview: '' };
+        this.sending = false;
+      } else {
+        if (result.localMessageId !== undefined && result.localMessageId !== '') {
+          this.removePendingMessage(result.localMessageId, true);
+        }
+        this.sending = false;
+        this.toast($r('app.string.messages_send_unavailable'));
+      }
+    } catch (err) {
+    }
+  }
+
   private popConversation(): void {
+    if (this.selectedId !== '') {
+      this.onRemoveAttachment(this.selectedId);
+    }
+    this.attachment = { name: '', size: 0, mimeType: '', preview: '' };
+    this.sending = false;
     this.emojiOpen = false;
     this.threadState = '';
     this.getUIContext().animateTo({ duration: POP_MS, curve: Curve.FastOutSlowIn }, () => {
@@ -468,21 +596,60 @@ export struct NativeMessages {
   private sendMessage(): void {
     const text: string = this.composerText.trim();
     const conversation: NativeChatConversation | undefined = this.currentConversation();
-    if (text === '' || conversation === undefined || this.sending) {
+    if (conversation === undefined || this.sending) {
+      return;
+    }
+    if (text === '' && this.attachment.name === '') {
       return;
     }
     this.sending = true;
     const messageId: string = 'sent-' + Date.now().toString();
-    const pending: NativeChatMessage = message(messageId, text, true, this.clockNow(), Date.now());
+    const pending: NativeChatMessage = message(
+      messageId,
+      text,
+      true,
+      this.clockNow(),
+      Date.now(),
+      this.attachment.name === '' ? 'text' : 'post',
+      this.attachment.preview,
+      this.attachment.name
+    );
     conversation.messages = conversation.messages.concat([pending]);
     this.activeMessages = this.activeMessages.concat([pending]);
-    conversation.preview = 'You: ' + text;
+    const preview: string = text !== '' ? text : 'Photo';
+    conversation.preview = 'You: ' + preview;
     conversation.time = 'now';
     this.conversations = this.conversations.slice();
-    this.composerText = '';
+    if (this.attachment.name === '') {
+      this.composerText = '';
+    }
     this.emojiOpen = false;
     this.scrollThreadToEnd();
-    this.onSendMessage(conversation.id, conversation.uid, text, messageId);
+    if (this.attachment.name === '') {
+      this.onSendMessage(conversation.id, conversation.uid, text, messageId);
+    } else {
+      this.onSendMedia(conversation.id, text, messageId);
+    }
+  }
+
+  private addAttachment(): void {
+    const conversation: NativeChatConversation | undefined = this.currentConversation();
+    if (conversation === undefined || this.sending) {
+      return;
+    }
+    this.emojiOpen = false;
+    this.onRequestMedia(conversation.id);
+  }
+
+  private removeAttachment(): void {
+    if (this.sending) {
+      return;
+    }
+    const conversation: NativeChatConversation | undefined = this.currentConversation();
+    if (conversation !== undefined) {
+      this.onRemoveAttachment(conversation.id);
+    }
+    this.attachment = { name: '', size: 0, mimeType: '', preview: '' };
   }
 
   private clockNow(): string {
@@ -650,6 +817,33 @@ export struct NativeMessages {
   @Builder
   messageBubble(item: NativeChatMessage) {
     Column({ space: S2 }) {
+      if (item.kind === 'post') {
+        if (item.mediaUrl !== '') {
+          Image(item.mediaUrl)
+            .width('78%')
+            .aspectRatio(1.35)
+            .objectFit(ImageFit.Contain)
+            .borderRadius(RADIUS_SM)
+            .clip(true)
+            .backgroundColor($r('sys.color.ohos_id_color_sub_background'))
+            .accessibilityText(item.mediaAlt)
+            .accessibilityLevel('yes')
+        } else {
+          Stack() {
+            Circle()
+              .width(96)
+              .height(96)
+              .fill($r('sys.color.ohos_id_color_emphasize'))
+            SymbolGlyph($r('sys.symbol.picture_fill'))
+              .fontSize(36)
+              .fontColor([$r('sys.color.ohos_id_color_foreground_contrary')])
+          }
+          .width(96)
+          .height(96)
+          .accessibilityText(item.mediaAlt)
+          .accessibilityLevel('yes')
+        }
+      }
       if (item.text !== '') {
         // The Row owns the fill and radius while the Text stays transparent.
         // This keeps one continuous surface for wrapped messages without the
@@ -707,10 +901,82 @@ export struct NativeMessages {
   @Builder
   composerBar() {
     Column({ space: 0 }) {
+      if (this.attachment.name !== '') {
+        Row({ space: S8 }) {
+          if (this.attachment.preview !== '') {
+            Image(this.attachment.preview)
+              .width(52)
+              .height(52)
+              .objectFit(ImageFit.Cover)
+              .borderRadius(RADIUS_SM)
+              .clip(true)
+          } else {
+            Stack() {
+              Circle()
+                .width(52)
+                .height(52)
+                .fill($r('sys.color.ohos_id_color_emphasize'))
+              SymbolGlyph($r('sys.symbol.picture_fill'))
+                .fontSize(24)
+                .fontColor([$r('sys.color.ohos_id_color_foreground_contrary')])
+            }
+            .width(52)
+            .height(52)
+          }
+          Column({ space: S2 }) {
+            Text(this.attachment.name)
+              .fontSize(13)
+              .fontFamily(FONT_FAMILY)
+              .fontWeight(FontWeight.Medium)
+              .fontColor($r('sys.color.ohos_id_color_text_primary'))
+              .maxLines(1)
+              .textOverflow({ overflow: TextOverflow.Ellipsis })
+            Text($r('app.string.messages_attachment_selected'))
+              .fontSize(11)
+              .fontFamily(FONT_FAMILY)
+              .fontColor($r('sys.color.ohos_id_color_text_secondary'))
+          }
+          .layoutWeight(1)
+          .alignItems(HorizontalAlign.Start)
+          Button({ type: ButtonType.Circle }) {
+            SymbolGlyph($r('sys.symbol.xmark'))
+              .fontSize(16)
+              .fontColor([$r('sys.color.ohos_id_color_text_secondary')])
+          }
+          .width(36)
+          .height(36)
+          .backgroundColor(Color.Transparent)
+          .accessibilityText($r('app.string.messages_remove_attachment'))
+          .accessibilityLevel('yes')
+          .onClick(() => {
+            this.removeAttachment();
+          })
+        }
+        .width('100%')
+        .padding({ left: S12, right: S12, top: S8, bottom: S4 })
+        .alignItems(VerticalAlign.Center)
+        .backgroundColor($r('sys.color.ohos_id_color_sub_background'))
+      }
       if (this.emojiOpen) {
         this.emojiPanel()
       }
       Row({ space: S4 }) {
+        Button({ type: ButtonType.Circle }) {
+          SymbolGlyph($r('sys.symbol.picture'))
+            .fontSize(22)
+            .fontColor([this.sending
+              ? $r('sys.color.ohos_id_color_text_tertiary')
+              : $r('sys.color.ohos_id_color_text_secondary')])
+        }
+        .width(TOOL_BUTTON)
+        .height(TOOL_BUTTON)
+        .backgroundColor(Color.Transparent)
+        .accessibilityText($r('app.string.messages_add_attachment'))
+        .accessibilityLevel('yes')
+        .onClick(() => {
+          this.addAttachment();
+        })
+
         Button({ type: ButtonType.Circle }) {
           SymbolGlyph($r('sys.symbol.face_smiling'))
             .fontSize(22)
@@ -750,12 +1016,12 @@ export struct NativeMessages {
               .height(TOOL_BUTTON)
               // HarmonyOS greys a control that cannot act instead of removing
               // it, so the send slot keeps its position and size in both states.
-              .fill(this.composerText.trim() === '' || this.sending
+              .fill((this.composerText.trim() === '' && this.attachment.name === '') || this.sending
                 ? $r('sys.color.ohos_id_color_button_normal')
                 : $r('sys.color.ohos_id_color_emphasize'))
             SymbolGlyph($r('sys.symbol.paperplane_fill'))
               .fontSize(20)
-              .fontColor([this.composerText.trim() === '' || this.sending
+              .fontColor([(this.composerText.trim() === '' && this.attachment.name === '') || this.sending
                 ? $r('sys.color.ohos_id_color_text_secondary')
                 : $r('sys.color.ohos_id_color_foreground_contrary')])
           }
@@ -768,7 +1034,7 @@ export struct NativeMessages {
         .accessibilityText($r('app.string.messages_send'))
         .accessibilityLevel('yes')
         .onClick(() => {
-          if (this.composerText.trim() !== '' && !this.sending) {
+          if ((this.composerText.trim() !== '' || this.attachment.name !== '') && !this.sending) {
             this.sendMessage();
           }
         })

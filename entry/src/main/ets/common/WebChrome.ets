@@ -118,7 +118,7 @@ export function dmInboxScript(): string {
     'var cid=msg.conversation_id;var at=Number(msg.time)||0;' +
     'var prev=byId[cid];' +
     'if(!prev||at>prev.at){' +
-    'byId[cid]={at:at,text:otText(mid.text).slice(0,140),' +
+    'byId[cid]={at:at,text:otText(mid.text).slice(0,140),mediaUrl:otDmMediaUrl(mid),mediaAlt:otDmMediaAlt(mid),' +
     'out:(String(mid.sender_id||"")===String(accountId))};}}' +
     'var out=[];' +
     'Object.keys(convs).forEach(function(k){var c=convs[k];if(!c)return;' +
@@ -139,7 +139,7 @@ export function dmInboxScript(): string {
     'var lastRead=String(c.last_read_event_id||"");var maxEntry=String(c.max_entry_id||"");' +
     'var unread=(lastRead!==""&&maxEntry!==""&&maxEntry!==lastRead)?1:0;' +
     'out.push({id:k,name:name,handle:handle,avatar:avatar,uid:uid,' +
-    'text:last?last.text:"",out:last?last.out:false,at:last?last.at:0,' +
+    'text:last?last.text:"",mediaUrl:last?last.mediaUrl:"",mediaAlt:last?last.mediaAlt:"",out:last?last.out:false,at:last?last.at:0,' +
     'muted:!!c.muted,unread:unread});});' +
     'out.sort(function(a,b){return (b.at||0)-(a.at||0);});' +
     'return JSON.stringify({state:"ok",conversations:out.slice(0,40)});');
@@ -204,10 +204,10 @@ export function dmThreadScript(conversationId: string): string {
     'var convs=tl.conversations||r.data.conversations||{};accountId=otAccountFromConvs(convs);' +
     'var entries=tl.entries||tl.timeline||[];' +
     'for(var i=0;i<entries.length;i++){var en=entries[i]||{};var m=en.message||en;var md=m.message_data||m;if(!md)continue;' +
-    'var txt=otText(md.text);if(!txt)continue;' +
+    'var txt=otText(md.text);var mediaUrl=otDmMediaUrl(md);if(!txt&&!mediaUrl)continue;' +
     'var at=otTime(m.time||m.created_at||md.time);' +
     'var sender=String(m.sender_id||md.sender_id||"");' +
-    'msgs.push({id:String(m.id||md.id||(cid+"-"+i)),text:txt.slice(0,500),out:accountId?sender===String(accountId):false,at:at});}}' +
+    'msgs.push({id:String(m.id||md.id||(cid+"-"+i)),text:txt.slice(0,500),mediaUrl:mediaUrl,mediaAlt:otDmMediaAlt(md),out:accountId?sender===String(accountId):false,at:at});}}' +
     'if(!msgs.length){' +
     'var b=await otGet("/i/api/1.1/dm/inbox_initial_state.json' +
     '?include_conversation_info=true&include_inbox_timelines=true");' +
@@ -216,8 +216,8 @@ export function dmThreadScript(conversationId: string): string {
     'accountId=otAccountFromConvs(st.conversations||{});' +
     'var ent=(st.entries||[]);' +
     'for(var e=0;e<ent.length;e++){var en2=ent[e]||{};var mm=en2.message||null;if(!mm||mm.conversation_id!==cid)continue;' +
-    'var dd=mm.message_data||{};var t2=otText(dd.text);if(!t2)continue;' +
-    'msgs.push({id:String(mm.id||(cid+"-"+e)),text:t2.slice(0,500),' +
+    'var dd=mm.message_data||{};var t2=otText(dd.text);var m2=otDmMediaUrl(dd);if(!t2&&!m2)continue;' +
+    'msgs.push({id:String(mm.id||(cid+"-"+e)),text:t2.slice(0,500),mediaUrl:m2,mediaAlt:otDmMediaAlt(dd),' +
     'out:String(dd.sender_id||"")===String(accountId),at:Number(mm.time)||0});}' +
     'if(!msgs.length)return JSON.stringify({state:"empty"});}' +
     'msgs.sort(function(a,b){return (a.at||0)-(b.at||0);});' +
@@ -241,6 +241,125 @@ export function dmSendScript(recipientId: string, text: string, conversationId: 
     '{event:{type:"message_create",message_create:{target:target,message_data:{text:txt}}}});' +
     'if(r.error)return JSON.stringify({state:r.error});' +
     'return JSON.stringify({state:"ok"});');
+}
+
+// MD5 is required by the upload endpoint for image DMs. Web Crypto does not
+// expose MD5 on every ArkWeb build, so the small pure-JS implementation is a
+// compatibility fallback for the browser File object we already own.
+const DM_MD5_HELPER: string =
+  'if(!window.otMd5){window.otMd5=async function(input){' +
+  'var bytes=input instanceof Uint8Array?input:new Uint8Array(input);' +
+  'try{if(window.crypto&&window.crypto.subtle){' +
+  'var digest=await window.crypto.subtle.digest("MD5",bytes);var view=new Uint8Array(digest);' +
+  'var out="";for(var di=0;di<view.length;di++)out+=("0"+view[di].toString(16)).slice(-2);return out;}}catch(_){}' +
+  'var shifts=[7,12,17,22,7,12,17,22,7,12,17,22,7,12,17,22,' +
+  '5,9,14,20,5,9,14,20,5,9,14,20,5,9,14,20,' +
+  '4,11,16,23,4,11,16,23,4,11,16,23,4,11,16,23,' +
+  '6,10,15,21,6,10,15,21,6,10,15,21,6,10,15,21];' +
+  'var constants=[];for(var ci=0;ci<64;ci++)constants[ci]=Math.floor(Math.abs(Math.sin(ci+1))*4294967296);' +
+  'function rol(value,shift){return (value<<shift)|(value>>>(32-shift));}' +
+  'var paddedLength=((bytes.length+9+63)>>6)<<6;var padded=new Uint8Array(paddedLength);padded.set(bytes);' +
+  'padded[bytes.length]=128;var bitLength=bytes.length*8;var low=bitLength>>>0;var high=Math.floor(bitLength/4294967296)>>>0;' +
+  'var lengthOffset=paddedLength-8;padded[lengthOffset]=low&255;padded[lengthOffset+1]=(low>>>8)&255;' +
+  'padded[lengthOffset+2]=(low>>>16)&255;padded[lengthOffset+3]=(low>>>24)&255;' +
+  'padded[lengthOffset+4]=high&255;padded[lengthOffset+5]=(high>>>8)&255;' +
+  'padded[lengthOffset+6]=(high>>>16)&255;padded[lengthOffset+7]=(high>>>24)&255;' +
+  'var a0=0x67452301,b0=0xefcdab89,c0=0x98badcfe,d0=0x10325476;var words=new Uint32Array(16);' +
+  'for(var block=0;block<paddedLength;block+=64){' +
+  'for(var wi=0;wi<16;wi++){var at=block+wi*4;words[wi]=(padded[at]|(padded[at+1]<<8)|(padded[at+2]<<16)|(padded[at+3]<<24))>>>0;}' +
+  'var a=a0,b=b0,c=c0,d=d0;for(var round=0;round<64;round++){var f;var g;var shift=shifts[round];' +
+  'if(round<16){f=(b&c)|((~b)&d);g=round;}' +
+  'else if(round<32){f=(d&b)|((~d)&c);g=(5*round+1)%16;}' +
+  'else if(round<48){f=b^c^d;g=(3*round+5)%16;}' +
+  'else{f=c^(b|((~d)&0xffffffff));g=(7*round)%16;}' +
+  'var next=d;d=c;c=b;var sum=(a+f+constants[round]+words[g])>>>0;b=(b+rol(sum,shift))>>>0;a=next;}' +
+  'a0=(a0+a)>>>0;b0=(b0+b)>>>0;c0=(c0+c)>>>0;d0=(d0+d)>>>0;}' +
+  'var values=[a0,b0,c0,d0];var result="";for(var vi=0;vi<values.length;vi++){var value=values[vi];' +
+  'for(var shift2=0;shift2<4;shift2++)result+=("0"+((value>>>(shift2*8))&255).toString(16)).slice(-2);}return result;};}';
+
+// Opens a page-owned image input. ArkWeb's existing onShowFileSelector hook
+// turns this into the system picker, while the browser keeps the real File
+// object on the page side. The native shell only receives the selected URI for
+// its preview; the bytes are never serialized through the JavaScript proxy.
+export function dmMediaPickScript(conversationId: string): string {
+  const cid: string = JSON.stringify(conversationId);
+  return pageBridgeScript(
+    'var cid=' + cid + ';' +
+    'try{' +
+    'if(!window.otNative||!window.otNative.onDmMediaRequest)return JSON.stringify({state:"bridge-unavailable"});' +
+    'window.otNative.onDmMediaRequest(cid);' +
+    'var old=document.getElementById("__ot_dm_media_input");if(old)old.remove();' +
+    'var input=document.createElement("input");input.id="__ot_dm_media_input";' +
+    'input.type="file";input.accept="image/jpeg,image/png,image/webp,image/gif";' +
+    'input.style.display="none";input.multiple=false;' +
+    'input.onchange=function(){var f=input.files&&input.files[0];' +
+    'if(!f){if(window.otNative&&window.otNative.onDmMediaResult)window.otNative.onDmMediaResult(cid,JSON.stringify({state:"cancelled"}));return;}' +
+    'if(!window.__otDmFiles)window.__otDmFiles={};if(window.__otDmFiles[cid])delete window.__otDmFiles[cid];' +
+    'window.__otDmFiles[cid]=f;' +
+    'if(!window.__otDmPreviews)window.__otDmPreviews={};if(window.__otDmPreviews[cid]){try{window.URL.revokeObjectURL(window.__otDmPreviews[cid]);}catch(_){}}' +
+    'var preview=window.URL.createObjectURL(f);window.__otDmPreviews[cid]=preview;' +
+    'if(window.otNative&&window.otNative.onDmMediaResult)window.otNative.onDmMediaResult(cid,JSON.stringify({state:"selected",name:f.name,size:f.size,mimeType:f.type,preview:preview}));};' +
+    'document.body.appendChild(input);input.click();return JSON.stringify({state:"picker-requested"});' +
+    '}catch(e){return JSON.stringify({state:"error",message:String(e).slice(0,120)});}');
+}
+
+// Uploads a page-owned File through the x.com session and sends it with the
+// legacy REST DM contract. This is intentionally separate from dmSendScript:
+// media messages must use dm/new2.json and a media_id, never the text-only
+// direct_messages/events/new.json endpoint.
+export function dmMediaUploadScript(conversationId: string, text: string): string {
+  const cid: string = JSON.stringify(conversationId);
+  const caption: string = JSON.stringify(text.slice(0, 1000));
+  return pageBridgeScript(
+    DM_MD5_HELPER + 'var cid=' + cid + ';var caption=' + caption + ';' +
+    'var upload="https://upload.x.com/i/media/upload.json";var sendPath="/i/api/1.1/dm/new2.json";' +
+    'function wait(ms){return new Promise(function(resolve){setTimeout(resolve,ms);});}' +
+    'var headers={"authorization":"Bearer "+bearer,"x-csrf-token":ct0,' +
+    '"x-twitter-auth-type":"OAuth2Session","x-twitter-active-user":"yes",' +
+    '"x-twitter-client-language":"en"};' +
+    'async function req(url,options){try{var o=Object.assign({},options||{});o.credentials="include";o.referrer="https://x.com/messages/"+encodeURIComponent(cid);o.headers=Object.assign({},headers,o.headers||{});' +
+    'var res=await fetch(url,o);var data=null;try{data=await res.json();}catch(e){}' +
+    'return {ok:res.ok,status:res.status,data:data};}catch(e){return {ok:false,status:0,data:null};}}' +
+    'try{var f=window.__otDmFiles&&window.__otDmFiles[cid];' +
+    'if(!f||!f.size)return JSON.stringify({state:"empty"});' +
+    'if(f.size>25*1024*1024)return JSON.stringify({state:"too-large"});' +
+    'var type=String(f.type||"");if(type.indexOf("image/")!==0)return JSON.stringify({state:"unsupported"});' +
+    'var category=type==="image/gif"?"dm_gif":"dm_image";' +
+    'var bytes=new Uint8Array(await f.arrayBuffer());var digest=await window.otMd5(bytes);' +
+    'var init=await req(upload+"?command=INIT&total_bytes="+encodeURIComponent(String(f.size))+' +
+    '"&media_type="+encodeURIComponent(type)+"&media_category="+encodeURIComponent(category),{method:"POST"});' +
+    'if(!init.ok||!init.data||!init.data.media_id_string)return JSON.stringify({state:"init-failed"});' +
+    'var mediaId=String(init.data.media_id_string);' +
+    'for(var offset=0;offset<f.size;offset+=1024*1024){var chunk=f.slice(offset,Math.min(offset+1024*1024,f.size));' +
+    'var form=new FormData();form.append("media",chunk,"blob");' +
+    'var append=await req(upload+"?command=APPEND&media_id="+encodeURIComponent(mediaId)+"&segment_index="+Math.floor(offset/(1024*1024)),{method:"POST",body:form});' +
+    'if(!append.ok)return JSON.stringify({state:"append-failed"});}' +
+    'var fin=await req(upload+"?command=FINALIZE&media_id="+encodeURIComponent(mediaId)+"&original_md5="+encodeURIComponent(digest),{method:"POST"});' +
+    'if(!fin.ok)return JSON.stringify({state:"finalize-failed"});' +
+    'var info=fin.data&&fin.data.processing_info;var started=Date.now();' +
+    'if(info&&(info.state==="failed"||info.state==="failure"))return JSON.stringify({state:"processing-failed"});' +
+    'while(info&&(info.state==="pending"||info.state==="in_progress")){if(Date.now()-started>20000)return JSON.stringify({state:"processing-timeout"});' +
+    'await wait(Math.max(250,(Number(info.check_after_secs)||1)*1000));var st=await req(upload+"?command=STATUS&media_id="+encodeURIComponent(mediaId),{});' +
+    'if(!st.ok||!st.data)return JSON.stringify({state:"status-failed"});info=st.data.processing_info;' +
+    'if(info&&(info.state==="failed"||info.state==="failure"))return JSON.stringify({state:"processing-failed"});}' +
+    'var requestId=(window.crypto&&window.crypto.randomUUID?window.crypto.randomUUID():' +
+    'String(Date.now())+"-"+String(Math.random()).slice(2)).toUpperCase();' +
+    'var body={cards_platform:"Web-12",conversation_id:cid,include_cards:1,include_quote_count:true,' +
+    'dm_users:false,media_id:mediaId,recipient_ids:"false",request_id:requestId,text:caption};' +
+    'var sent=await req(sendPath,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body)});' +
+    'if(!sent.ok)return JSON.stringify({state:"send-failed"});' +
+    'if(!sent.data)return JSON.stringify({state:"ok",messageId:""});' +
+    'var id="";var entries=sent.data.entries||[];if(entries.length&&entries[0].message)id=String(entries[0].message.id||"");' +
+    'delete window.__otDmFiles[cid];return JSON.stringify({state:"ok",messageId:id});' +
+    '}catch(e){var err={state:"error",message:String(e).slice(0,120)};return JSON.stringify(err);}');
+}
+
+export function dmMediaClearScript(conversationId: string): string {
+  const cid: string = JSON.stringify(conversationId);
+  return '(function(){try{var cid=' + cid + ';if(window.__otDmFiles&&window.__otDmFiles[cid])delete window.__otDmFiles[cid];' +
+    'if(window.__otDmPreviews&&window.__otDmPreviews[cid]){try{window.URL.revokeObjectURL(window.__otDmPreviews[cid]);}catch(_){}delete window.__otDmPreviews[cid];}' +
+    'var input=document.getElementById("__ot_dm_media_input");if(input)input.remove();return JSON.stringify({state:"cleared"});' +
+    'catch(e){return JSON.stringify({state:"error"});}})()';
 }
 
 // X's current web client mutes a DM conversation through these two session

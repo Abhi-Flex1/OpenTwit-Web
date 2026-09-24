@@ -9,6 +9,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { createHash } from 'node:crypto';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, '..');
@@ -81,9 +82,11 @@ function extractBody(src, fnName) {
 
 const SESSION_SETUP = extractConst(bridgeSrc, 'SESSION_SETUP');
 const FETCH_HELPER = extractConst(bridgeSrc, 'FETCH_HELPER');
+const DM_MEDIA_HELPER = extractConst(bridgeSrc, 'DM_MEDIA_HELPER');
 const TWEET_SHAPE_JS = extractConst(chromeSrc, 'TWEET_SHAPE_JS');
+const DM_MD5_HELPER = extractConst(chromeSrc, 'DM_MD5_HELPER');
 function pageBridgeScript(body) {
-  return '(async function(){try{' + SESSION_SETUP + FETCH_HELPER + body +
+  return '(async function(){try{' + SESSION_SETUP + FETCH_HELPER + DM_MEDIA_HELPER + body +
     '}catch(e){return JSON.stringify({state:"error",message:String(e).slice(0,120)});}})()';
 }
 
@@ -134,6 +137,131 @@ async function run(script, { cookie = '', scripts = [], routes = {}, qs = null, 
   const fn = new Function('document', 'window', 'fetch', `return (${script})`);
   const out = await fn(document, window, fetch);
   return { out: JSON.parse(out), window };
+}
+
+async function runMediaScript(script, { file, failAt = '', mediaId = 'media-1' } = {}) {
+  const calls = [];
+  const nativeResults = [];
+  const source = new Uint8Array(2 * 1024 * 1024 + 37);
+  for (let i = 0; i < source.length; i += 1) source[i] = (i * 31 + 7) & 0xff;
+  const fileObject = {
+    name: 'fixture.png',
+    size: source.length,
+    type: 'image/png',
+    arrayBuffer: async () => source.buffer.slice(0),
+    slice: (start, end) => ({
+      name: 'blob',
+      size: Math.max(0, end - start),
+      type: 'image/png'
+    })
+  };
+  const document = {
+    cookie: 'ct0=TOK',
+    title: '',
+    body: {
+      children: [],
+      appendChild(node) { this.children.push(node); }
+    },
+    querySelectorAll(sel) {
+      if (sel === 'script[src]') return [{ src: BEARER_SCRIPT }];
+      return [];
+    },
+    querySelector() { return null; },
+    getElementById(id) { return this.body.children.find((node) => node.id === id) || null; },
+    createElement(tag) {
+      if (tag === 'input') {
+        const node = {
+          id: '',
+          type: '',
+          accept: '',
+          style: {},
+          multiple: false,
+          files: [],
+          onchange: null,
+          click() {
+            this.files = [fileObject];
+            if (this.onchange) this.onchange();
+          },
+          remove() {
+            this.removed = true;
+          }
+        };
+        return node;
+      }
+      return {
+        innerHTML: '',
+        get value() { return decodeEntities(this.innerHTML); }
+      };
+    }
+  };
+  const window = {
+    __otDmFiles: { c1: fileObject },
+    otNative: {
+      onDmMediaRequest() {},
+      onDmMediaResult(conversationId, json) {
+        nativeResults.push({ conversationId, payload: JSON.parse(json) });
+      }
+    },
+    URL: {
+      createObjectURL() { return 'blob:fixture'; },
+      revokeObjectURL() {}
+    }
+  };
+  class FormDataStub {
+    constructor() { this.parts = []; }
+    append(name, value, filename) { this.parts.push({ name, value, filename }); }
+  }
+  class BlobStub {}
+  const fetch = async (url, options = {}) => {
+    const u = String(url);
+    calls.push({ url: u, options });
+    if (u === BEARER_SCRIPT) {
+      return { text: async () => 'Authorization: Bearer ' + 'A'.repeat(100) };
+    }
+    if (u.includes('command=INIT')) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ media_id_string: mediaId })
+      };
+    }
+    if (u.includes('command=APPEND') && failAt === 'append') {
+      return { ok: false, status: 500, json: async () => ({}) };
+    }
+    if (u.includes('command=APPEND')) {
+      return { ok: true, status: 200, json: async () => ({}) };
+    }
+    if (u.includes('command=FINALIZE')) {
+      return {
+        ok: true,
+        status: 204,
+        json: async () => { throw new Error('no body'); }
+      };
+    }
+    if (u.includes('/i/api/1.1/dm/new2.json')) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ entries: [{ message: { id: 'server-message-1' } }] })
+      };
+    }
+    return { ok: false, status: 404, json: async () => ({}) };
+  };
+  const fn = new Function(
+    'document', 'window', 'fetch', 'FormData', 'Blob', 'URL', 'Uint8Array',
+    `return (${script})`
+  );
+  const output = await fn(
+    document, window, fetch, FormDataStub, BlobStub, window.URL, Uint8Array
+  );
+  return {
+    out: JSON.parse(output),
+    calls,
+    nativeResults,
+    window,
+    fileObject,
+    source
+  };
 }
 
 const BEARER_SCRIPT = 'https://x.com/main.js';
@@ -192,6 +320,12 @@ function build(fnName, consts = {}) {
 const scripts = {
   dmInbox: build('dmInboxScript'),
   dmThread: build('dmThreadScript', { safe: JSON.stringify('c1') }),
+  dmMediaPick: build('dmMediaPickScript', { cid: JSON.stringify('c1') }),
+  dmMediaUpload: build('dmMediaUploadScript', {
+    cid: JSON.stringify('c1'),
+    caption: JSON.stringify('caption'),
+    DM_MD5_HELPER
+  }),
   notifications: build('notificationsScript'),
   home: build('homeTimelineScript', { safe: JSON.stringify(''), TWEET_SHAPE_JS }),
   homePaged: build('homeTimelineScript', { safe: JSON.stringify('CUR123'), TWEET_SHAPE_JS }),
@@ -206,6 +340,40 @@ for (const [k, s] of Object.entries(scripts)) {
     check(`script parses: ${k}`, false, e.message.slice(0, 100));
   }
 }
+
+const mediaPick = await runMediaScript(scripts.dmMediaPick);
+check('media picker requests the native hook',
+  mediaPick.nativeResults[0]?.payload?.state === 'selected' &&
+  mediaPick.nativeResults[0]?.conversationId === 'c1',
+  JSON.stringify(mediaPick.nativeResults));
+check('media picker retains the selected File',
+  mediaPick.window.__otDmFiles?.c1 === mediaPick.fileObject);
+
+const mediaUpload = await runMediaScript(scripts.dmMediaUpload);
+const mediaAppends = mediaUpload.calls.filter((call) => call.url.includes('command=APPEND'));
+const mediaFinalize = mediaUpload.calls.find((call) => call.url.includes('command=FINALIZE'));
+const mediaSend = mediaUpload.calls.find((call) => call.url.includes('/i/api/1.1/dm/new2.json'));
+const expectedDigest = createHash('md5').update(Buffer.from(mediaUpload.source)).digest('hex');
+check('media upload starts with INIT',
+  mediaUpload.calls.some((call) => call.url.includes('command=INIT') &&
+    call.url.includes('media_category=dm_image')));
+check('media upload sends three multipart APPEND requests', mediaAppends.length === 3);
+check('media upload finalizes with the exact MD5',
+  mediaFinalize?.url.includes(`original_md5=${expectedDigest}`));
+check('media upload sends dm/new2 with media_id',
+  mediaUpload.out.state === 'ok' &&
+  mediaSend &&
+  JSON.parse(mediaSend.options.body).media_id === 'media-1' &&
+  JSON.parse(mediaSend.options.body).conversation_id === 'c1');
+check('media upload accepts a 204 finalize without a JSON body',
+  mediaUpload.out.state === 'ok' && mediaUpload.out.messageId === 'server-message-1');
+
+const mediaFailure = await runMediaScript(scripts.dmMediaUpload, { failAt: 'append' });
+check('media upload append failure does not send',
+  mediaFailure.out.state === 'append-failed' &&
+  !mediaFailure.calls.some((call) => call.url.includes('/i/api/1.1/dm/new2.json')));
+check('media upload failure retains the selected File for retry',
+  mediaFailure.window.__otDmFiles?.c1 === mediaFailure.fileObject);
 
 // Optionally dump an assembled script for live evaluation in a WebView
 // (node scripts/check-page-bridge.mjs --dump <fn> [outfile] [constsJson])
@@ -399,9 +567,37 @@ const threadFixture = {
     ]
   }
 };
+const mediaOnlyThreadFixture = {
+  conversation_timeline: {
+    users: {}, conversations: {},
+    entries: [{
+      id: 'm-media',
+      time: '1785000000000',
+      sender_id: 'me',
+      text: '',
+      message_data: {
+        text: '',
+        sender_id: 'me',
+        attachment: {
+          photo: {
+            media_url_https: 'https://pbs.twimg.com/media/fixture.jpg',
+            alt_text: 'Fixture image'
+          }
+        }
+      }
+    }]
+  }
+};
 const threadPath = '/i/api/1.1/dm/conversation/c1.json?include_conversation_info=true';
 r = await run(scripts.dmThread, { cookie: 'ct0=TOK', scripts: [BEARER_SCRIPT], routes: { [threadPath]: threadFixture } });
 check('thread ok skips system entries', r.out.state === 'ok' && r.out.messages.length === 1 && r.out.messages[0]?.text === 'hey', JSON.stringify(r.out).slice(0, 120));
+r = await run(scripts.dmThread, { cookie: 'ct0=TOK', scripts: [BEARER_SCRIPT], routes: { [threadPath]: mediaOnlyThreadFixture } });
+check('thread keeps media-only messages',
+  r.out.state === 'ok' && r.out.messages.length === 1 &&
+  r.out.messages[0]?.text === '' &&
+  r.out.messages[0]?.mediaUrl === 'https://pbs.twimg.com/media/fixture.jpg' &&
+  r.out.messages[0]?.mediaAlt === 'Fixture image',
+  JSON.stringify(r.out));
 
 // API text is HTML-escaped: a real DM arrived as "worktrees &amp; moving" and
 // rendered the entity literally until otText() was added. Same for tweet and

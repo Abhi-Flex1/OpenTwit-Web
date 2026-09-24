@@ -69,7 +69,14 @@ check('chat bubbles use the bounded Row renderer',
 check('chat bubbles keep contrasting system text colors',
   messages.includes('ohos_id_color_foreground_contrary') &&
   messages.includes('ohos_id_color_text_primary'));
-
+check('chat composer exposes native image attachment',
+  messages.includes('sys.symbol.picture') &&
+  messages.includes('messages_add_attachment') &&
+  messages.includes('onRequestMedia'));
+check('chat composer previews and removes attachments',
+  messages.includes('attachment.preview') &&
+  messages.includes('messages_remove_attachment') &&
+  messages.includes('onRemoveAttachment'));
 // 3. Components exist and own their states ------------------------------------
 const components = [
   'entry/src/main/ets/components/NativeHome.ets',
@@ -93,6 +100,11 @@ const notifications = read('entry/src/main/ets/components/NativeNotifications.et
 check('notification rows carry a target post', notifications.includes('targetId') &&
   notifications.includes('this.onOpenItem(item.id, item.targetId)'));
 const main = read('entry/src/main/ets/pages/MainTabs.ets');
+check('chat media sends are isolated from text sends',
+  main.includes('sendDmMedia') &&
+  main.includes('dmMediaUploadScript') &&
+  chrome.includes('/i/api/1.1/dm/new2.json') &&
+  chrome.includes('upload.x.com/i/media/upload.json'));
 check('notification taps open the real status route',
   main.includes("TWITTER_BASE + '/i/web/status/' + targetId"));
 check('user-facing routes reveal the session web surface',
@@ -122,7 +134,12 @@ check('session death clears cached handle', main.includes('noteSignedOut(json)')
 // value: ArkWeb hands back the synchronous result of an async IIFE, which is
 // always "" — that is what left every signed-in surface blank.
 check('async reads return via the proxy callback', main.includes('window.otNative.onBridgeResult(id,String(v))'));
-check('callback is exposed to the page', main.includes("methodList: ['onUrlChange', 'onSessionAppeared', 'onBridgeResult']"));
+check('callback is exposed to the page',
+  main.includes("'onUrlChange'") &&
+  main.includes("'onSessionAppeared'") &&
+  main.includes("'onBridgeResult'") &&
+  main.includes("'onDmMediaRequest'") &&
+  main.includes("'onDmMediaResult'"));
 check('reads have a deadline', main.includes('BRIDGE_TIMEOUT_MS') && main.includes('read timed out'));
 check('stale reads dropped on navigation', main.includes('this.dropPendingBridgeReads();'));
 check('late thread replies are keyed', main.includes("key !== '' && key === this.threadId"));

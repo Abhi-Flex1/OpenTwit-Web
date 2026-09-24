@@ -96,6 +96,15 @@ const FETCH_HELPER: string =
   '.replace(/&quot;/g,String.fromCharCode(34)).replace(/&apos;/g,String.fromCharCode(39))' +
   '.replace(/&#0?39;/g,String.fromCharCode(39)).replace(/&amp;/g,"&");};';
 
+const DM_MEDIA_HELPER: string =
+  'var otDmMedia=function(md){try{var a=md&&md.attachment;if(Array.isArray(a))a=a[0];if(a)return a;' +
+  'var aa=md&&md.attachments;if(Array.isArray(aa)&&aa.length)return aa[0];return null;}catch(e){return null;}};' +
+  'var otDmMediaUrl=function(md){try{var a=otDmMedia(md);if(!a)return "";' +
+  'var x=a.photo||a.media||a.video||a.animated_gif;if(!x)return "";' +
+  'return String(x.media_url_https||x.media_url||x.preview_image_url||x.url||x.display_url||"");}catch(e){return "";}};' +
+  'var otDmMediaAlt=function(md){try{var a=otDmMedia(md);if(!a)return "Image";' +
+  'var x=a.photo||a.media||a.video||a.animated_gif;return String((x&&x.alt_text)||md.alt_text||"Image");}catch(e){return "Image";}};';
+
 /**
  * Wraps a per-surface body into a self-contained script for
  * `WebviewController.runJavaScript`.
@@ -107,6 +116,6 @@ const FETCH_HELPER: string =
  * data the surface asked for.
  */
 export function pageBridgeScript(body: string): string {
-  return '(async function(){try{' + SESSION_SETUP + FETCH_HELPER + body +
+  return '(async function(){try{' + SESSION_SETUP + FETCH_HELPER + DM_MEDIA_HELPER + body +
     '}catch(e){return JSON.stringify({state:"error",message:String(e).slice(0,120)});}})()';
 }

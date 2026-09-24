@@ -431,8 +431,12 @@ Message text is drawn inside a bounded rounded `Row` surface rather than a
 filled `Text` or span, which keeps wrapped messages continuous and avoids the
 emulator's black-background paint path. Text sends use the real DM endpoint,
 while mute uses the session-backed route confirmed in the current x.com client.
-Archive, attachments, voice, calls, and video calls are not exposed by the
-native surface until their real paths exist.
+Image attachments use the system picker and are uploaded from the page-owned
+`File` through the current `upload.x.com` `INIT`/`APPEND`/`FINALIZE` contract and
+`dm/new2.json`; the detached bridge harness covers the request shapes, MD5,
+multipart chunking, `204` finalize, and retry retention without contacting X.
+Archive, voice, calls, and video calls are not exposed by the native surface
+until their real paths exist.
 
 ### 8.5 Verification on devices
 
@@ -881,10 +885,11 @@ This section records the pass run against that feedback on the phone AVD
   the one filter the local session can honour honestly — verified and
   people-you-follow are account-graph facts the shell does not have until the
   real DM list is read off the page.
-* **The composer became a composer.** Visible field fill, an emoji panel, and a
-  text send slot that greys out when there is nothing to send instead of moving.
-  Unsupported attachment/voice affordances were removed instead of displaying a
-  local-only success state.
+* **The composer became a composer.** Visible field fill, an emoji panel, a
+  system-picker image attachment, and a text/media send slot that greys out when
+  there is nothing to send instead of moving. The image path keeps the real
+  `File` in the page context and only reports success after the authenticated
+  upload and `dm/new2.json` request complete.
 * **Per-message timestamps** under each bubble, and the thread is
   **bottom-anchored** so a short conversation sits on the composer rather than
   floating at the top of an empty page.
@@ -934,8 +939,8 @@ pixels; the layout dump kept readable text and stable bounds.
 ### 13.5 Boundaries
 
 * **The native conversation model is session-backed, not seeded.** The inbox,
-  thread, search, unread rows, text send and mute are fed by the page's own DM
-  API. Attachment sending, voice, calls, video calls and archive remain outside
+  thread, search, unread rows, text send, image attachment send and mute are fed
+  by the page's own DM API. Voice, calls, video calls and archive remain outside
   this native surface rather than being represented by placeholder state.
 * **Unread rows are derived from the inbox's `last_read_event_id` and
   `max_entry_id` markers.** A conversation becomes read when it is opened; a
@@ -1356,7 +1361,26 @@ Live reversible proof on the healthy API 24 target (2026-09-24):
   `check-media-save.mjs`, `check-unread-counts.mjs`, `git diff --check`, and
   `hvigorw --no-daemon assembleHap` all passed.
 
-### 18.7 Media save: secure root surface and honest device boundary (2026-09-24)
+### 18.7 DM media path: detached contract and device boundary (2026-09-24)
+
+Native image attachments now have a complete page-origin transport. The visible
+composer opens HarmonyOS's image picker, the page keeps the selected `File` in
+`window.__otDmFiles`, and the authenticated bridge performs the current
+`upload.x.com/i/media/upload.json` `INIT`/1 MiB `APPEND`/`FINALIZE` sequence
+before posting to `/i/api/1.1/dm/new2.json`. A native preview is sourced from
+the picker URI; image bytes never cross the JavaScript proxy. The detached
+`scripts/check-page-bridge.mjs` fixture executes the shipped picker and upload
+scripts against an in-memory `File`, multipart transport, `204` finalize, and
+append failure, while `scripts/check-dm-media-contract.mjs` pins the transport
+contract itself.
+
+The connected phone target was reinstalled with the signed HAP and launched
+successfully, but its saved x.com session was on the login wall. The 2in1
+fixture was also captured with PhotoSuite in the foreground, so neither target
+can honestly be called live attachment-send proof yet. No real recipient was
+contacted during this pass.
+
+### 18.8 Media save: secure root surface and honest device boundary (2026-09-24)
 
 The post-card download target now only downloads a temporary sandbox image. A
 root-level native sheet owns the HarmonyOS `SaveButton` secure control, which

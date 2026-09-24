@@ -24,7 +24,8 @@ import {
   OWN_HANDLE_SCRIPT, chromeScript, chromeFlagScript, scrollToTopScript,
   CLICK_POST_BUTTON_SCRIPT, PROFILE_BOOTSTRAP_SCRIPT, fillComposerScript,
   HOME_TAB_SCRIPT, selectHomeTabScript, AVATAR_SCRIPT, UNREAD_COUNTS_SCRIPT,
-  ONLINE_PATCH, immersiveInsetScript, dmInboxScript, dmThreadScript, dmSendScript, dmMuteScript,
+  ONLINE_PATCH, immersiveInsetScript, dmInboxScript, dmThreadScript, dmSendScript, dmMediaClearScript,
+  dmMediaPickScript, dmMediaUploadScript, dmMuteScript,
   notificationsScript, homeTimelineScript, profileScript, trendsScript,
   searchTweetsScript, postActionScript, sessionIdentityScript, SESSION_WATCHER
 } from '../common/WebChrome';
@@ -122,6 +123,11 @@ class PageBridge {
   };
   private sessionHandler: () => void = () => {
   };
+  private dmMediaRequestHandler: (conversationId: string) => void = (conversationId: string) => {
+  };
+  private dmMediaResultHandler: (conversationId: string, json: string) => void =
+    (conversationId: string, json: string) => {
+    };
   private resultHandler: (id: string, json: string) => void = (id: string, json: string) => {
   };
 
@@ -131,6 +137,14 @@ class PageBridge {
 
   setSessionHandler(handler: () => void): void {
     this.sessionHandler = handler;
+  }
+
+  setDmMediaRequestHandler(handler: (conversationId: string) => void): void {
+    this.dmMediaRequestHandler = handler;
+  }
+
+  setDmMediaResultHandler(handler: (conversationId: string, json: string) => void): void {
+    this.dmMediaResultHandler = handler;
   }
 
   setResultHandler(handler: (id: string, json: string) => void): void {
@@ -143,6 +157,14 @@ class PageBridge {
 
   onSessionAppeared(): void {
     this.sessionHandler();
+  }
+
+  onDmMediaRequest(conversationId: string): void {
+    this.dmMediaRequestHandler(conversationId);
+  }
+
+  onDmMediaResult(conversationId: string, json: string): void {
+    this.dmMediaResultHandler(conversationId, json);
   }
 
   onBridgeResult(id: string, json: string): void {
@@ -240,6 +262,17 @@ interface PendingPostAction {
   attempts: number;
 }
 
+interface DmMediaPayload {
+  state: string;
+  name?: string;
+  size?: number;
+  mimeType?: string;
+  preview?: string;
+  previewUri?: string;
+  messageId?: string;
+  localMessageId?: string;
+}
+
 @Entry
 @Component
 struct MainTabs {
@@ -306,6 +339,7 @@ struct MainTabs {
   @State threadJson: string = '';
   @State threadId: string = '';
   @State sendStateJson: string = '';
+  @State dmMediaResultJson: string = '';
   @State homeJson: string = '';
   @State notifListJson: string = '';
   @State profileJson: string = '';
@@ -366,6 +400,11 @@ struct MainTabs {
   // surface.
   private pendingPostAction: PendingPostAction | null = null;
   private postActionStageTimer: number = -1;
+  private dmMediaPickConversation: string = '';
+  private dmMediaConversation: string = '';
+  private dmMediaPreviewUri: string = '';
+  private pendingDmMediaSend: string = '';
+  private pendingDmMediaConversation: string = '';
   // Last count handed to the launcher, so the shell only calls out when it
   // actually changes.
   private badgeShown: number = -1;
@@ -396,6 +435,43 @@ struct MainTabs {
       }
       this.bridgePending.delete(id);
       this.applyBridgeResult(entry.name, entry.key, json);
+    });
+    this.bridge.setDmMediaRequestHandler((conversationId: string) => {
+      this.dmMediaPickConversation = conversationId;
+    });
+    this.bridge.setDmMediaResultHandler((conversationId: string, json: string) => {
+      let payload: string = json;
+      let localMessageId: string = this.pendingDmMediaSend;
+      if (conversationId === this.dmMediaPickConversation && this.dmMediaPreviewUri !== '') {
+        try {
+          const value: DmMediaPayload = JSON.parse(json) as DmMediaPayload;
+          if (value.state === 'selected') {
+            value.previewUri = this.dmMediaPreviewUri;
+            payload = JSON.stringify(value);
+          }
+        } catch (err) {
+        }
+      }
+      if (conversationId === this.dmMediaPickConversation) {
+        try {
+          const value: DmMediaPayload = JSON.parse(json) as DmMediaPayload;
+          if (value.state === 'selected') {
+            this.dmMediaConversation = conversationId;
+          } else if (value.state === 'cancelled' ||
+            value.state === 'navigation-cancelled') {
+            this.dmMediaConversation = '';
+          }
+        } catch (err) {
+        }
+      }
+      this.dmMediaResultJson = JSON.stringify({
+        conversationId: conversationId,
+        payload: payload,
+        localMessageId: localMessageId,
+        nonce: Date.now().toString()
+      });
+      this.dmMediaPickConversation = '';
+      this.dmMediaPreviewUri = '';
     });
     this.applyBreakpoints();
     this.armFirstLoadTimeout();
@@ -461,6 +537,7 @@ struct MainTabs {
       clearTimeout(this.firstLoadTimer);
       this.firstLoadTimer = -1;
     }
+    this.clearDmMedia();
     if (this.badgeTimer !== -1) {
       clearInterval(this.badgeTimer);
       this.badgeTimer = -1;
@@ -714,6 +791,10 @@ struct MainTabs {
 
   // How long an async page read may take before the surface is told it failed.
   private static readonly BRIDGE_TIMEOUT_MS: number = 20000;
+  // Image uploads can spend up to 20 seconds in X's processing state before
+  // the send request starts. Keep that write from being mistaken for a dead
+  // bridge while still keeping every other page read bounded.
+  private static readonly MEDIA_BRIDGE_TIMEOUT_MS: number = 45000;
 
   // Run an async bridge script and receive its JSON through the proxy callback.
   // The script is evaluated synchronously (returning ''), the page's promise is
@@ -739,6 +820,8 @@ struct MainTabs {
       hilog.info(DOMAIN, TAG, '%{public}s read could not start', name);
       if (name === 'sendDm') {
         this.applyBridgeResult(name, key, '{"state":"error"}');
+      } else if (name === 'sendDmMedia') {
+        this.applyBridgeResult(name, key, '{"state":"error"}');
       } else {
         this.retryBridgeSoon(name);
       }
@@ -749,13 +832,15 @@ struct MainTabs {
         hilog.info(DOMAIN, TAG, '%{public}s read timed out', name);
         this.applyBridgeResult(name, key, '{"state":"error"}');
       }
-    }, MainTabs.BRIDGE_TIMEOUT_MS);
+    }, name === 'sendDmMedia' ? MainTabs.MEDIA_BRIDGE_TIMEOUT_MS : MainTabs.BRIDGE_TIMEOUT_MS);
   }
 
   // A full page load replaces the page's JavaScript context, so any read still
   // in flight can never answer: drop them instead of timing out 20 s later and
   // flashing an error over a surface that the new page is about to fill.
   private dropPendingBridgeReads(): void {
+    const mediaConversation: string = this.dmMediaPickConversation !== '' ?
+      this.dmMediaPickConversation : this.pendingDmMediaConversation;
     if (this.bridgePending.size > 0) {
       hilog.debug(DOMAIN, TAG, 'page load: dropping %{public}d pending read(s)',
         this.bridgePending.size);
@@ -763,12 +848,32 @@ struct MainTabs {
         if (entry.name === 'sendDm') {
           this.sendStateJson = JSON.stringify({ state: 'error', messageId: entry.key });
           this.pendingSendConversations.delete(entry.key);
+        } else if (entry.name === 'sendDmMedia') {
+          this.dmMediaResultJson = JSON.stringify({
+            conversationId: mediaConversation,
+            payload: JSON.stringify({ state: 'navigation-cancelled' }),
+            localMessageId: entry.key,
+            nonce: Date.now().toString()
+          });
         }
       });
       this.bridgePending.clear();
     }
     if (this.pendingPostAction !== null && !this.pendingPostAction.staged) {
       this.finishPostAction(false);
+    }
+    if (mediaConversation !== '') {
+      this.clearDmMediaForConversation(mediaConversation);
+      this.dmMediaResultJson = JSON.stringify({
+        conversationId: mediaConversation,
+        payload: JSON.stringify({ state: 'navigation-cancelled' }),
+        localMessageId: this.pendingDmMediaSend,
+        nonce: Date.now().toString()
+      });
+      this.dmMediaPickConversation = '';
+      this.pendingDmMediaSend = '';
+      this.pendingDmMediaConversation = '';
+      this.dmMediaPreviewUri = '';
     }
   }
 
@@ -781,7 +886,8 @@ struct MainTabs {
     // A read that lands while the page is still settling comes back as an
     // error or empty. Retry it in a couple of seconds rather than leaving the
     // surface showing a failure until the next full poll (25 s on Home).
-    const isWriteBridge: boolean = name === 'sendDm' || name === 'dmMute' || name === 'postAction';
+    const isWriteBridge: boolean = name === 'sendDm' || name === 'sendDmMedia' ||
+      name === 'dmMute' || name === 'postAction';
     if (!isWriteBridge &&
       (json.indexOf('"state":"error"') >= 0 || json.indexOf('"state":"unexpected"') >= 0)) {
       this.retryBridgeSoon(name);
@@ -885,6 +991,26 @@ struct MainTabs {
         this.toast($r('app.string.messages_signed_out_title'));
       } else {
         this.sendStateJson = JSON.stringify({ state: 'error', messageId: key });
+        this.toast($r('app.string.messages_send_unavailable'));
+      }
+    } else if (name === 'sendDmMedia') {
+      if (key !== this.pendingDmMediaSend) {
+        return;
+      }
+      this.pendingDmMediaSend = '';
+      const conversationId: string = this.pendingDmMediaConversation;
+      this.pendingDmMediaConversation = '';
+      this.dmMediaResultJson = JSON.stringify({
+        conversationId: conversationId,
+        payload: json,
+        localMessageId: key,
+        nonce: Date.now().toString()
+      });
+      if (json.indexOf('"state":"ok"') >= 0) {
+        this.dmMediaPreviewUri = '';
+        this.refreshThread(conversationId);
+        this.refreshDms();
+      } else {
         this.toast($r('app.string.messages_send_unavailable'));
       }
     } else if (name === 'dmMute') {
@@ -1913,6 +2039,79 @@ struct MainTabs {
     this.runBridge('sendDm', dmSendScript(recipientId, text, conversationId), messageId);
   }
 
+  private requestDmMedia(conversationId: string): void {
+    if (!this.signedIn() || conversationId === '') {
+      this.toast($r('app.string.messages_send_unavailable'));
+      return;
+    }
+    if (this.dmMediaPickConversation !== '') {
+      return;
+    }
+    try {
+      this.controller.runJavaScript(dmMediaPickScript(conversationId)).catch((err: Error) => {
+        this.dmMediaResultJson = JSON.stringify({
+          conversationId: conversationId,
+          payload: JSON.stringify({ state: 'cancelled' }),
+          localMessageId: '',
+          nonce: Date.now().toString()
+        });
+        this.dmMediaPickConversation = '';
+      });
+    } catch (err) {
+      this.dmMediaResultJson = JSON.stringify({
+        conversationId: conversationId,
+        payload: JSON.stringify({ state: 'cancelled' }),
+        localMessageId: '',
+        nonce: Date.now().toString()
+      });
+      this.dmMediaPickConversation = '';
+    }
+  }
+
+  private sendDmMedia(conversationId: string, text: string, messageId: string): void {
+    if (!this.signedIn() || conversationId === '' || this.pendingDmMediaSend !== '') {
+      this.dmMediaResultJson = JSON.stringify({
+        conversationId: conversationId,
+        payload: JSON.stringify({ state: 'error' }),
+        localMessageId: messageId,
+        nonce: Date.now().toString()
+      });
+      this.toast($r('app.string.messages_send_unavailable'));
+      return;
+    }
+    this.pendingDmMediaSend = messageId;
+    this.pendingDmMediaConversation = conversationId;
+    this.dmMediaPickConversation = '';
+    this.runBridge('sendDmMedia', dmMediaUploadScript(conversationId, text), messageId);
+  }
+
+  private clearDmMedia(): void {
+    const conversationId: string = this.dmMediaPickConversation !== '' ?
+      this.dmMediaPickConversation :
+      (this.dmMediaConversation !== '' ? this.dmMediaConversation : this.pendingDmMediaConversation);
+    if (conversationId !== '') {
+      try {
+        this.controller.runJavaScript(dmMediaClearScript(conversationId));
+      } catch (err) {
+      }
+    }
+    this.dmMediaPickConversation = '';
+    this.dmMediaConversation = '';
+    this.pendingDmMediaSend = '';
+    this.pendingDmMediaConversation = '';
+    this.dmMediaPreviewUri = '';
+  }
+
+  private clearDmMediaForConversation(conversationId: string): void {
+    if (conversationId === '') {
+      return;
+    }
+    try {
+      this.controller.runJavaScript(dmMediaClearScript(conversationId));
+    } catch (err) {
+    }
+  }
+
   private muteDm(conversationId: string, muted: boolean): void {
     if (!this.signedIn() || conversationId === '') {
       this.toast($r('app.string.messages_mute_unavailable'));
@@ -2420,18 +2619,39 @@ struct MainTabs {
         event.fileSelector.getMode() === FileSelectorMode.FileOpenMultipleMode;
       const options: photoAccessHelper.PhotoSelectOptions =
         new photoAccessHelper.PhotoSelectOptions();
-      options.MIMEType = photoAccessHelper.PhotoViewMIMETypes.IMAGE_VIDEO_TYPE;
+      options.MIMEType = this.dmMediaPickConversation !== '' ?
+        photoAccessHelper.PhotoViewMIMETypes.IMAGE_TYPE :
+        photoAccessHelper.PhotoViewMIMETypes.IMAGE_VIDEO_TYPE;
       options.maxSelectNumber = multiple ? 10 : 1;
       new photoAccessHelper.PhotoViewPicker().select(options)
         .then((result: photoAccessHelper.PhotoSelectResult) => {
+          if (this.dmMediaPickConversation !== '' && result.photoUris.length > 0) {
+            this.dmMediaPreviewUri = result.photoUris[0];
+          }
           event.result.handleFileList(result.photoUris);
         })
         .catch((err: Error) => {
           hilog.warn(DOMAIN, TAG, 'file picker cancelled: %{public}s', err.message);
+          if (this.dmMediaPickConversation !== '') {
+            this.dmMediaResultJson = JSON.stringify({
+              conversationId: this.dmMediaPickConversation,
+              payload: JSON.stringify({ state: 'cancelled' }),
+              nonce: Date.now().toString()
+            });
+            this.dmMediaPickConversation = '';
+          }
           event.result.handleFileList([]);
         });
     } catch (err) {
       hilog.error(DOMAIN, TAG, 'file selector failed: %{public}s', JSON.stringify(err));
+      if (this.dmMediaPickConversation !== '') {
+        this.dmMediaResultJson = JSON.stringify({
+          conversationId: this.dmMediaPickConversation,
+          payload: JSON.stringify({ state: 'cancelled' }),
+          nonce: Date.now().toString()
+        });
+        this.dmMediaPickConversation = '';
+      }
       event.result.handleFileList([]);
     }
   }
@@ -3144,7 +3364,13 @@ struct MainTabs {
       .javaScriptProxy({
         object: this.bridge,
         name: 'otNative',
-        methodList: ['onUrlChange', 'onSessionAppeared', 'onBridgeResult'],
+        methodList: [
+          'onUrlChange',
+          'onSessionAppeared',
+          'onBridgeResult',
+          'onDmMediaRequest',
+          'onDmMediaResult'
+        ],
         controller: this.controller
       })
       .onControllerAttached(() => {
@@ -3429,6 +3655,7 @@ struct MainTabs {
               this.threadId = '';
               this.threadJson = '';
               this.stopThreadPolling();
+              this.clearDmMedia();
             }
             // The bottom bar steps aside for a conversation, so the page's own
             // bottom inset has to change with it.
@@ -3438,8 +3665,25 @@ struct MainTabs {
             this.startThreadPolling(id);
           },
           sendStateJson: this.sendStateJson,
+          dmMediaResultJson: this.dmMediaResultJson,
           onSendMessage: (id: string, uid: string, text: string, messageId: string) => {
             this.sendDm(id, uid, text, messageId);
+          },
+          onRequestMedia: (id: string) => {
+            this.requestDmMedia(id);
+          },
+          onSendMedia: (id: string, text: string, messageId: string) => {
+            this.sendDmMedia(id, text, messageId);
+          },
+          onRemoveAttachment: (id: string) => {
+            if (this.dmMediaPickConversation === id) {
+              this.dmMediaPickConversation = '';
+            }
+            if (this.pendingDmMediaConversation === id) {
+              this.pendingDmMediaConversation = '';
+            }
+            this.dmMediaPreviewUri = '';
+            this.clearDmMediaForConversation(id);
           },
           onMuteConversation: (id: string, muted: boolean) => {
             this.muteDm(id, muted);
