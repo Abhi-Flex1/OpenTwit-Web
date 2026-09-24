@@ -371,6 +371,14 @@ export struct NativeMessages {
   // this session: local replies on the open conversation are re-appended to the
   // fresh inbox data.
   onDmChanged(): void {
+    const incomingState: string = dmStateOf(this.dmJson);
+    if (incomingState === 'loading') {
+      // A route transition or a poll can briefly report loading after the
+      // previous inbox was valid. Keep the list visible until a real payload
+      // arrives instead of flashing an empty/unavailable surface.
+      this.dmState = incomingState;
+      return;
+    }
     const list: NativeChatConversation[] = parseDmPayload(this.dmJson);
     // Preserve per-conversation local state across inbox polls: unsent/sent
     // bubbles, mute toggles and the uid the send path needs.

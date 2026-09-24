@@ -81,6 +81,10 @@ const BADGE_REFRESH_MS: number = 30000;
 // than a snapshot: a message that lands while the app is open shows up here
 // within one tick.
 const DM_POLL_MS: number = 6000;
+// The native inbox is requested as soon as Messages is selected, but x.com
+// needs a moment to finish its /messages -> /i/chat transition. Keep the
+// surface in its loading treatment until that route is ready.
+const DM_ROUTE_HYDRATION_MS: number = 10000;
 // Live lists poll only while their tab is on screen. Home moves fastest, so it
 // polls fastest; trends barely move, so they poll slowest.
 const HOME_POLL_MS: number = 25000;
@@ -383,6 +387,8 @@ struct MainTabs {
   private bridge: PageBridge = new PageBridge();
   // DM inbox polling. The timer runs only while the Messages tab is on screen.
   private dmTimer: number = -1;
+  private dmRouteHydrating: boolean = false;
+  private dmRouteHydrationTimer: number = -1;
   // Live-list timers. Each runs only while its surface is on screen, so the
   // native lists track the account in near real time without costing anything
   // on the other tabs.
@@ -585,6 +591,10 @@ struct MainTabs {
       clearTimeout(this.sessionBootstrapTimer);
       this.sessionBootstrapTimer = -1;
     }
+    if (this.dmRouteHydrationTimer !== -1) {
+      clearTimeout(this.dmRouteHydrationTimer);
+      this.dmRouteHydrationTimer = -1;
+    }
     this.clearDmMedia();
     if (this.badgeTimer !== -1) {
       clearInterval(this.badgeTimer);
@@ -661,6 +671,29 @@ struct MainTabs {
       this.sessionBootstrapTimer = -1;
     }
     this.sessionResolving = false;
+  }
+
+  private armDmRouteHydration(): void {
+    if (this.dmRouteHydrationTimer !== -1) {
+      clearTimeout(this.dmRouteHydrationTimer);
+    }
+    this.dmRouteHydrating = true;
+    this.dmJson = '{"state":"loading"}';
+    this.dmRouteHydrationTimer = setTimeout(() => {
+      this.dmRouteHydrationTimer = -1;
+      if (this.dmRouteHydrating) {
+        this.dmRouteHydrating = false;
+        this.refreshDms();
+      }
+    }, DM_ROUTE_HYDRATION_MS);
+  }
+
+  private finishDmRouteHydration(): void {
+    if (this.dmRouteHydrationTimer !== -1) {
+      clearTimeout(this.dmRouteHydrationTimer);
+      this.dmRouteHydrationTimer = -1;
+    }
+    this.dmRouteHydrating = false;
   }
 
   // Bottom bar on phones, side rail on wide layouts. The listener only flips a
@@ -1003,9 +1036,21 @@ struct MainTabs {
         this.searchNext = MainTabs.nextCursor(json);
       }
     } else if (name === 'dm') {
-      this.dmJson = json;
-      this.noteSignedOut(json);
-      this.reportNewDms(json);
+      if (this.dmRouteHydrating && json.indexOf('"state":"ok"') < 0 &&
+        json.indexOf('"state":"signed-out"') < 0) {
+        // The first /messages document can answer before its /i/chat route is
+        // ready. Keep the native inbox calm and let the bounded route gate make
+        // a later failure visible if the transition really is broken.
+        this.dmJson = '{"state":"loading"}';
+      } else {
+        if (json.indexOf('"state":"ok"') >= 0 ||
+          json.indexOf('"state":"signed-out"') >= 0) {
+          this.finishDmRouteHydration();
+        }
+        this.dmJson = json;
+        this.noteSignedOut(json);
+        this.reportNewDms(json);
+      }
     } else if (name === 'thread') {
       // A reply for a conversation the user has left must not reopen it.
       if (key !== '' && key === this.threadId) {
@@ -1620,6 +1665,11 @@ struct MainTabs {
     this.tick();
     this.currentIndex = index;
     this.viewingHandle = '';
+    if (index === 3) {
+      this.armDmRouteHydration();
+    } else {
+      this.finishDmRouteHydration();
+    }
     this.applyPollersForTab(index);
     this.refreshVisibleSurface();
     this.loadWeb(TWITTER_ROUTES[index]);
@@ -1971,6 +2021,9 @@ struct MainTabs {
       // No account yet: say so plainly instead of showing anything at all.
       this.dmJson = '{"state":"signed-out"}';
       return;
+    }
+    if (this.dmRouteHydrating) {
+      this.dmJson = '{"state":"loading"}';
     }
     this.runBridge('dm', dmInboxScript(), '');
   }

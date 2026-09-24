@@ -170,6 +170,11 @@ check('shell waits for session identity before showing signed-out chrome',
   main.includes('if (this.sessionResolving)') &&
   main.includes('this.finishSessionResolution()') &&
   main.includes('this.dmJson = \'{"state":"loading"}\''));
+check('Messages waits for the web route before exposing a failed inbox',
+  main.includes('DM_ROUTE_HYDRATION_MS') &&
+  main.includes('dmRouteHydrating') &&
+  main.includes("json.indexOf('\"state\":\"ok\"')") &&
+  messages.includes('incomingState === \'loading\''));
 check('compose FAB clears the floating bar itself',
   main.includes('.margin({ right: S16, bottom: BAR_HEIGHT + S16 })'));
 check('shell owns profile action staging and completion',
