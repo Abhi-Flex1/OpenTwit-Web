@@ -1464,3 +1464,59 @@ contains the real Brady/Krista/John Bai inbox, and the 12- and 20-second
 captures remain populated. The native thread was opened without sending a
 message: its header, four real bubbles, timestamps, and composer rendered in
 the recovered frame.
+
+### 18.12 Route hydration for Notifications, Explore and Profile (2026-09-25)
+
+Every tab switch used to fire the same native read twice: once from the tab's
+poller and once from the visible-surface refresh. The hidden x.com page was
+still swapping documents, so those reads answered `error` and then
+`no-bearer` — a state the retry ladder did not treat as transient. A real
+page behind them did not help: the failure was published to the native
+surface, which then showed "unavailable" over content that was about to
+hydrate.
+
+Reproduced on the signed-in phone (`127.0.0.1:5557`) against the pushed build
+`b1a1b98`: selecting Notifications logged two `error` results, then
+`no-bearer`, and after 15 seconds the native surface still read "Notifications
+unavailable" while the hidden page had already rendered real notification
+data. Explore recovered only through an `error` retry, and Profile — whose
+page DOM was fully rendered at 15 seconds — was stuck on "Profile
+unavailable" because `no-bearer` was never retried.
+
+The fix is one shared state machine rather than three surface patches:
+
+- `no-bearer` joins `error` and `unexpected` as a transient bridge result, so
+  it enters the same bounded recovery ladder.
+- A transient result no longer replaces good content. While a recovery read
+  is scheduled, the surface is handed `{"state":"loading"}` instead of the
+  failure, so the native views stay in their calm loading treatment and never
+  discard rows they already drew.
+- Retries are owned by the visible surface: each one re-checks the active tab
+  and the original conversation, profile handle or search query at fire time,
+  and profile/search/thread recovery re-reads the key it was asked for rather
+  than whatever the route has become.
+- A tab change resets the retry counters and starts exactly one reader. The
+  duplicate second read is gone, which is also what cut the route-transition
+  load in half on the phone log.
+
+Verified on the same signed-in phone with the freshly built HAP, without
+clearing app data or the saved session:
+
+- Cold start: a `SecurityError` on the first Home read no longer publishes an
+  error; Home hydrates to live posts about four seconds later.
+- Notifications: one read per transition, `error` → `no-bearer` → `ok`; the
+  three-second capture shows the calm loading treatment with no unavailable
+  card, and the seven- and 22-second captures show 137–138 real rows with
+  correct relative timestamps, the unread badge and the native compose FAB.
+- Explore: `error` → `no-bearer` → `ok` with 83 live trend rows, including a
+  current "Trending now" news item; no empty or error panel.
+- Profile: `loading` → `no-bearer` → `loading` → `ok`, ending on the rendered
+  header (banner, avatar, 543 Following / 466 Followers) with two real posts
+  and their engagement counts.
+
+Explorer's evidence is the layout tree and app log rather than a reviewed
+screenshot; Notifications and Profile were also confirmed against captured
+frames. `check-native-surfaces.mjs` grew assertions that lock in each of these
+behaviours — `no-bearer` as transient, tab- and key-owned retries, profile
+recovery keeping its handle, calm state while retrying, and a tab change
+starting a single reader.

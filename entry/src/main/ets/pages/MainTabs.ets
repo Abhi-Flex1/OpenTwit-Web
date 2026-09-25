@@ -870,6 +870,10 @@ struct MainTabs {
     this.profileSettleAttempts = 0;
   }
 
+  private resetBridgeRetries(): void {
+    this.bridgeRetries = {};
+  }
+
   private scheduleProfilePostSettle(key: string): void {
     if (this.profileSettleTimer !== -1 || this.profileSettleAttempts >= PROFILE_POST_SETTLE_ATTEMPTS) {
       return;
@@ -935,7 +939,7 @@ struct MainTabs {
         // machine reconcile the result once, then restore or report honestly.
         this.applyBridgeResult(name, key, '{"state":"error"}');
       } else {
-        this.retryBridgeSoon(name);
+        this.retryBridgeSoon(name, key);
       }
     }
     setTimeout(() => {
@@ -1002,16 +1006,32 @@ struct MainTabs {
       return;
     }
     hilog.debug(DOMAIN, TAG, '%{public}s -> %{public}s', name, json.slice(0, 48));
-    // A read that lands while the page is still settling comes back as an
-    // error or empty. Retry it in a couple of seconds rather than leaving the
-    // surface showing a failure until the next full poll (25 s on Home).
+    // Do not let an answer for a route the user already left drive the retry
+    // state of the surface that is visible now.
+    if ((name === 'search' && key !== this.searchPending) ||
+      (name === 'profile' && key !== this.profileFor) ||
+      (name === 'profileMore' && key !== this.profileFor) ||
+      (name === 'thread' && key !== '' && key !== this.threadId)) {
+      return;
+    }
+    // During an x.com route swap the bridge can briefly lose its bearer or hit
+    // a half-replaced document. Keep the native surface in its calm loading
+    // treatment while bounded recovery reads run, rather than flashing a false
+    // error or replacing content that is already good.
     const isWriteBridge: boolean = name === 'sendDm' || name === 'sendDmMedia' ||
       name === 'dmMute' || name === 'postAction' || name === 'profileAction';
-    if (!isWriteBridge &&
-      (json.indexOf('"state":"error"') >= 0 || json.indexOf('"state":"unexpected"') >= 0)) {
-      this.retryBridgeSoon(name);
-    } else {
+    const retrying: boolean = !isWriteBridge && this.isTransientBridgeState(json) &&
+      this.retryBridgeSoon(name, key);
+    if (!retrying && !isWriteBridge) {
       this.bridgeRetries['retry-' + name] = 0;
+    }
+    if (retrying && (name === 'home' || name === 'notif' || name === 'trends' ||
+      name === 'search' || name === 'dm' || name === 'profile')) {
+      json = '{"state":"loading"}';
+    } else if (retrying) {
+      // Paging and identity failures keep their last good state/cursor. The
+      // scheduled read owns recovery; there is nothing useful to publish here.
+      return;
     }
     if (name === 'home') {
       this.homeJson = json;
@@ -1082,7 +1102,7 @@ struct MainTabs {
         }
       } catch (err) {
       }
-      if (json.indexOf('"state":"loading"') >= 0) {
+      if (json.indexOf('"state":"loading"') >= 0 && !retrying) {
         // The profile DOM renders a beat after the page. Re-read a few times,
         // then say the profile is unavailable instead of spinning forever.
         if (this.profileLoadAttempts < PROFILE_LOAD_ATTEMPTS) {
@@ -1096,7 +1116,7 @@ struct MainTabs {
         } else {
           this.profileJson = '{"state":"unexpected"}';
         }
-      } else {
+      } else if (!retrying) {
         this.profileLoadAttempts = 0;
       }
     } else if (name === 'profileMore') {
@@ -1178,18 +1198,62 @@ struct MainTabs {
     }
   }
 
-  // A transient page failure is common right after a navigation (the page is
-  // still swapping documents, so a fetch answers empty). Re-read the same
-  // surface shortly after, a few times, before the surface settles on a state.
-  private retryBridgeSoon(name: string): void {
-    const key: string = 'retry-' + name;
-    this.bridgeRetries[key] = (this.bridgeRetries[key] ?? 0) + 1;
-    const attempt: number = this.bridgeRetries[key];
-    if (attempt > 4) {
-      return;
+  private isTransientBridgeState(json: string): boolean {
+    return json.indexOf('"state":"error"') >= 0 ||
+      json.indexOf('"state":"unexpected"') >= 0 ||
+      json.indexOf('"state":"no-bearer"') >= 0;
+  }
+
+  private canRetryBridge(name: string, key: string): boolean {
+    if (this.webLoginOpen || this.webDetailOpen) {
+      return false;
+    }
+    if (name === 'home') {
+      return this.currentIndex === 0;
+    }
+    if (name === 'homeMore') {
+      return this.currentIndex === 0 && this.homeNext !== '';
+    }
+    if (name === 'notif') {
+      return this.currentIndex === 2;
+    }
+    if (name === 'trends') {
+      return this.currentIndex === 1;
+    }
+    if (name === 'search') {
+      return this.currentIndex === 1 && key !== '' && key === this.searchPending;
+    }
+    if (name === 'dm') {
+      return this.currentIndex === 3;
+    }
+    if (name === 'thread') {
+      return this.currentIndex === 3 && this.chatOpen && key !== '' && key === this.threadId;
+    }
+    if (name === 'profile') {
+      return this.currentIndex === 4 && key !== '' && key === this.profileFor;
+    }
+    if (name === 'profileMore') {
+      return this.currentIndex === 4 && key !== '' && key === this.profileFor &&
+        this.profileNext !== '';
+    }
+    return name === 'identity' && this.ownHandle === '';
+  }
+
+  // Re-read the same visible surface shortly after a transient route result.
+  // Every timer re-checks ownership at fire time, so a fast tab change cannot
+  // make an old retry read the wrong page.
+  private retryBridgeSoon(name: string, key: string): boolean {
+    if (!this.canRetryBridge(name, key)) {
+      return false;
+    }
+    const retryKey: string = 'retry-' + name;
+    this.bridgeRetries[retryKey] = (this.bridgeRetries[retryKey] ?? 0) + 1;
+    const attempt: number = this.bridgeRetries[retryKey];
+    if (attempt > 6) {
+      return false;
     }
     setTimeout(() => {
-      if (this.bridgeRetries[key] !== attempt) {
+      if (this.bridgeRetries[retryKey] !== attempt || !this.canRetryBridge(name, key)) {
         return;
       }
       switch (name) {
@@ -1206,16 +1270,16 @@ struct MainTabs {
           this.refreshTrends();
           break;
         case 'search':
-          this.runSearch(this.searchText);
+          this.runSearch(key);
           break;
         case 'dm':
           this.refreshDms();
           break;
         case 'thread':
-          this.refreshThread(this.pendingThreadId);
+          this.refreshThread(key);
           break;
         case 'profile':
-          this.refreshProfile(this.viewingHandle !== '' ? this.viewingHandle : this.ownHandle);
+          this.refreshProfile(key);
           break;
         case 'profileMore':
           this.loadMoreProfile();
@@ -1227,6 +1291,7 @@ struct MainTabs {
           break;
       }
     }, 1500 * attempt);
+    return true;
   }
 
   // Identity straight off the session, no DOM. The inbox names its
@@ -1541,10 +1606,8 @@ struct MainTabs {
     }
     if (idx >= 0 && idx !== this.currentIndex) {
       this.currentIndex = idx;
+      this.resetBridgeRetries();
       this.applyPollersForTab(idx);
-      // Web-driven tab change (redirect, login wall lifting) must re-read the
-      // newly visible native list at once, not on the next timer tick.
-      this.refreshVisibleSurface();
     }
     const handle: string = profileHandleForUrl(url);
     if (handle !== '' && handle !== this.viewingHandle) {
@@ -1665,13 +1728,13 @@ struct MainTabs {
     this.tick();
     this.currentIndex = index;
     this.viewingHandle = '';
+    this.resetBridgeRetries();
     if (index === 3) {
       this.armDmRouteHydration();
     } else {
       this.finishDmRouteHydration();
     }
     this.applyPollersForTab(index);
-    this.refreshVisibleSurface();
     this.loadWeb(TWITTER_ROUTES[index]);
   }
 
@@ -1699,13 +1762,16 @@ struct MainTabs {
     this.currentIndex = 4;
     this.hasError = false;
     this.webLoginOpen = false;
-    this.applyPollersForTab(4);
     if (this.ownHandle !== '') {
       this.viewingHandle = this.ownHandle;
-      this.refreshProfile(this.ownHandle);
+      this.resetBridgeRetries();
+      this.applyPollersForTab(4);
       this.loadWeb(profileUrl(this.ownHandle));
       return;
     }
+    this.viewingHandle = '';
+    this.resetBridgeRetries();
+    this.applyPollersForTab(4);
     this.progress = 0;
     this.discoverOwnProfile(true);
   }
@@ -1719,8 +1785,8 @@ struct MainTabs {
     this.viewingHandle = clean;
     this.webLoginOpen = false;
     this.webDetailOpen = false;
+    this.resetBridgeRetries();
     this.applyPollersForTab(4);
-    this.refreshProfile(clean);
     this.loadWeb(profileUrl(clean));
   }
 

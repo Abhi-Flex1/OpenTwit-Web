@@ -255,6 +255,29 @@ check('stale reads dropped on navigation', main.includes('this.dropPendingBridge
 check('late thread replies are keyed', main.includes("key !== '' && key === this.threadId"));
 check('late search replies are keyed', main.includes('if (key === this.searchPending)'));
 check('transient failures retry quickly', main.includes('retryBridgeSoon') && main.includes('1500 * attempt'));
+check('missing bearer is a transient route result',
+  main.includes('json.indexOf(\'"state":"no-bearer"\')') &&
+  main.includes('this.isTransientBridgeState(json)'));
+check('route retries are owned by the visible surface',
+  main.includes('private canRetryBridge(name: string, key: string)' ) &&
+  main.includes("return this.currentIndex === 2;") &&
+  main.includes("return this.currentIndex === 4 && key !== '' && key === this.profileFor;"));
+check('profile recovery retains the requested handle',
+  main.includes('this.refreshProfile(key);') &&
+  main.includes('this.runSearch(key);') &&
+  main.includes('this.refreshThread(key);'));
+check('transient route reads stay calm while retrying',
+  main.includes('const retrying: boolean') &&
+  main.includes("json = '{\"state\":\"loading\"}';"));
+const goRouteStart = main.indexOf('private goRoute(index: number): void');
+const goRouteEnd = main.indexOf('// Native Home switcher', goRouteStart);
+const goRouteBody = main.slice(goRouteStart, goRouteEnd);
+const routeChangeStart = goRouteBody.indexOf('this.currentIndex = index;');
+const routeChangeTail = goRouteBody.slice(routeChangeStart);
+check('a tab change starts one visible reader',
+  routeChangeTail.includes('this.resetBridgeRetries();') &&
+  routeChangeTail.includes('this.applyPollersForTab(index);') &&
+  !routeChangeTail.includes('this.refreshVisibleSurface();'));
 check('profile post hydration gets a bounded settle pass',
   main.includes('PROFILE_POST_SETTLE_ATTEMPTS') &&
   main.includes('scheduleProfilePostSettle') &&
